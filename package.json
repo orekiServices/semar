@@ -1,6 +1,6 @@
 {
   "name": "semar",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Semar - Self-hosted lyrics database with node isolation, PostgreSQL/MySQL/SQLite support, SemAPI dynamic routes, and YouTube Video ID caching.",
   "type": "module",
   "main": "src/server/index.ts",
@@ -10,7 +10,7 @@
     "build": "npm run build:client",
     "start": "tsx src/server/index.ts",
     "seed": "tsx src/server/db/seed.ts",
-    "test": "node --import tsx --test test/semar.test.ts"
+    "test": "node --import tsx --test test/semar.test.ts test/semar-v21.test.ts"
   },
   "keywords": [
     "semar",

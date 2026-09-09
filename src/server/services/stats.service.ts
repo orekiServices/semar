@@ -2,6 +2,7 @@ import { getDb } from '../db/index.js';
 import { nodeService } from './node.service.js';
 import { cacheService } from './cache.service.js';
 import { semApiService } from './semapi.service.js';
+import { metricsService } from './metrics.service.js';
 
 export class StatsService {
   async getDashboardOverview() {
@@ -45,18 +46,19 @@ export class StatsService {
     }
     topTracks.sort((a, b) => (b.views_count || 0) - (a.views_count || 0));
 
-    // Simulated 24-hour request timeline (using real base stats)
-    const hoursTimeline = Array.from({ length: 24 }, (_, i) => {
-      const hour = `${String((new Date().getHours() - 23 + i + 24) % 24).padStart(2, '0')}:00`;
-      const baseReqs = Math.floor(120 + Math.sin(i / 3) * 60 + Math.random() * 30);
-      const cacheHits = Math.floor(baseReqs * 0.85);
-      return {
-        hour,
-        requests: baseReqs,
-        cacheHits,
-        semapiCalls: Math.floor(baseReqs * 0.25),
-      };
-    });
+    // v2.1 — REAL 24-hour request timeline from the metrics engine
+    // (previously simulated with Math.random). Falls back to persisted
+    // system_metrics history when the process just booted.
+    const hoursTimeline = await this.getRequestTimeline(24);
+
+    // v2.1 — pending community submissions awaiting moderation
+    let pendingSubmissions = 0;
+    try {
+      const sub = await db.queryOne<{ count: number }>(
+        "SELECT COUNT(*) as count FROM lyrics_submissions WHERE status = 'pending'"
+      );
+      pendingSubmissions = sub?.count || 0;
+    } catch {}
 
     return {
       overview: {
@@ -71,12 +73,49 @@ export class StatsService {
         cacheHitRate: cacheStats.hitRate,
         databaseType: db.type,
         totalTablesCount: tables.length,
+        pendingSubmissions,
       },
       nodeDistribution,
       topTracks: topTracks.slice(0, 8),
       cacheStats,
       timeline: hoursTimeline,
+      realtime: metricsService.getSnapshot(),
     };
+  }
+
+  /**
+   * v2.1 — Merge live in-memory buckets with persisted history so the
+   * dashboard shows real traffic immediately after boot.
+   */
+  async getRequestTimeline(hours: number = 24) {
+    const live = metricsService.getHourlyTimeline(hours);
+    const liveTotal = live.reduce((acc, b) => acc + b.requests, 0);
+    if (liveTotal > 0) return live;
+
+    // No live traffic yet — try persisted aggregate history
+    try {
+      const db = getDb();
+      const rows = await db.query<any>(
+        `SELECT value, metadata FROM system_metrics
+         WHERE category = 'http' AND metric_name = 'requests_per_hour'
+         ORDER BY id DESC LIMIT ?`,
+        [hours]
+      );
+      if (rows.length > 0) {
+        const byHour = new Map<string, { requests: number; errors: number }>();
+        for (const r of rows) {
+          try {
+            const meta = typeof r.metadata === 'string' ? JSON.parse(r.metadata || '{}') : r.metadata || {};
+            if (meta.hour) byHour.set(meta.hour, { requests: Number(r.value) || 0, errors: Number(meta.errors) || 0 });
+          } catch {}
+        }
+        return live.map((b) => {
+          const hist = byHour.get(b.hour);
+          return hist ? { ...b, requests: hist.requests, errors: hist.errors } : b;
+        });
+      }
+    } catch {}
+    return live;
   }
 
   async recordMetric(category: string, metricName: string, value: number, metadata: any = {}) {

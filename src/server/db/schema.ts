@@ -155,6 +155,34 @@ export async function runMigrations(db: DatabaseAdapter): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_youtube_cache_accessed ON youtube_cache (last_accessed_at);
       CREATE INDEX IF NOT EXISTS idx_metrics_cat ON system_metrics (category, timestamp);
     `);
+
+    // v2.1: community lyrics submissions moderation queue
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS lyrics_submissions (
+        id SERIAL PRIMARY KEY,
+        node_id VARCHAR(64) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        artist VARCHAR(255) NOT NULL,
+        album VARCHAR(255),
+        youtube_video_id VARCHAR(64),
+        duration INTEGER DEFAULT 0,
+        plain_lyrics TEXT,
+        synced_lyrics TEXT,
+        ttml_lyrics TEXT,
+        metadata JSONB DEFAULT '{}'::jsonb,
+        submitter_name VARCHAR(128) DEFAULT 'Anonymous',
+        submitter_ip VARCHAR(64),
+        status VARCHAR(16) DEFAULT 'pending',
+        review_note TEXT,
+        reviewed_by VARCHAR(128),
+        reviewed_at TIMESTAMPTZ,
+        song_id INTEGER,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_submissions_status ON lyrics_submissions (status, created_at);
+    `);
   } else if (isMysql) {
     await db.query(`
       CREATE TABLE IF NOT EXISTS \`system_config\` (
@@ -314,6 +342,32 @@ export async function runMigrations(db: DatabaseAdapter): Promise<void> {
         \`metadata\` JSON
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
+    // v2.1: community lyrics submissions moderation queue
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS \`lyrics_submissions\` (
+        \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+        \`node_id\` VARCHAR(64) NOT NULL,
+        \`title\` VARCHAR(255) NOT NULL,
+        \`artist\` VARCHAR(255) NOT NULL,
+        \`album\` VARCHAR(255),
+        \`youtube_video_id\` VARCHAR(64),
+        \`duration\` INT DEFAULT 0,
+        \`plain_lyrics\` MEDIUMTEXT,
+        \`synced_lyrics\` MEDIUMTEXT,
+        \`ttml_lyrics\` MEDIUMTEXT,
+        \`metadata\` JSON,
+        \`submitter_name\` VARCHAR(128) DEFAULT 'Anonymous',
+        \`submitter_ip\` VARCHAR(64),
+        \`status\` VARCHAR(16) DEFAULT 'pending',
+        \`review_note\` TEXT,
+        \`reviewed_by\` VARCHAR(128),
+        \`reviewed_at\` DATETIME,
+        \`song_id\` INT,
+        \`created_at\` DATETIME DEFAULT CURRENT_TIMESTAMP,
+        \`updated_at\` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX \`idx_submissions_status\` (\`status\`, \`created_at\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
   } else {
     // SQLite
     await db.query(`
@@ -457,6 +511,32 @@ export async function runMigrations(db: DatabaseAdapter): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_semapi_path ON semapi_routes (path, method);
       CREATE INDEX IF NOT EXISTS idx_youtube_cache_accessed ON youtube_cache (last_accessed_at);
       CREATE INDEX IF NOT EXISTS idx_metrics_cat ON system_metrics (category, timestamp);
+
+      -- v2.1: community lyrics submissions moderation queue
+      CREATE TABLE IF NOT EXISTS lyrics_submissions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        node_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        artist TEXT NOT NULL,
+        album TEXT,
+        youtube_video_id TEXT,
+        duration INTEGER DEFAULT 0,
+        plain_lyrics TEXT,
+        synced_lyrics TEXT,
+        ttml_lyrics TEXT,
+        metadata TEXT DEFAULT '{}',
+        submitter_name TEXT DEFAULT 'Anonymous',
+        submitter_ip TEXT,
+        status TEXT DEFAULT 'pending',
+        review_note TEXT,
+        reviewed_by TEXT,
+        reviewed_at TEXT,
+        song_id INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_submissions_status ON lyrics_submissions (status, created_at);
     `);
   }
 

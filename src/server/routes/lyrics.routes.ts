@@ -1,23 +1,40 @@
 import { Router } from 'express';
 import { lyricsService } from '../services/lyrics.service.js';
 import { cacheService } from '../services/cache.service.js';
-import { requireAdminAuth } from '../middleware/auth.middleware.js';
+import { requireAdminAuth, trackApiKey, type AuthenticatedRequest } from '../middleware/auth.middleware.js';
 import { logsService } from '../services/logs.service.js';
 
 const router = Router();
 
+/** v2.1 — enforce scoped API key permissions + node restrictions on public reads. */
+function scopedNodeIds(req: AuthenticatedRequest): string[] | undefined {
+  const restrictions = req.apiKey?.node_restrictions;
+  return restrictions && restrictions.length > 0 ? restrictions : undefined;
+}
+
+function hasReadPermission(req: AuthenticatedRequest): boolean {
+  if (req.user) return true; // admin session
+  if (!req.apiKey) return true; // anonymous (policy already checked by trackApiKey)
+  const perms: string[] = req.apiKey.permissions || [];
+  return perms.includes('read') || perms.includes('admin') || perms.includes('*');
+}
+
 // Global Lyrics Search across nodes
-router.get('/search', async (req, res, next) => {
+router.get('/search', trackApiKey, async (req: AuthenticatedRequest, res, next) => {
   try {
+    if (!hasReadPermission(req)) {
+      return res.status(403).json({ error: 'Forbidden: API key lacks "read" permission' });
+    }
     const query = (req.query.q as string) || '';
     const limit = Math.min(parseInt((req.query.limit as string) || '20', 10), 100);
     const nsfw = req.query.nsfw === 'true' || req.query.nsfw === '1';
+    const nodeIds = scopedNodeIds(req);
 
     // If query looks like YouTube video ID
     if (query.startsWith('yt:') || query.startsWith('youtube:')) {
       const ytId = query.split(':')[1].trim();
       const ytMatch = await lyricsService.getByYouTubeId(ytId);
-      if (ytMatch) {
+      if (ytMatch && (!nodeIds || nodeIds.map((n) => n.toLowerCase()).includes((ytMatch.node_id || '').toLowerCase()))) {
         return res.json({
           status: 'success',
           source: 'youtube_cache_resolver',
@@ -27,7 +44,7 @@ router.get('/search', async (req, res, next) => {
       }
     }
 
-    const results = await lyricsService.searchAll(query, limit, { nsfw });
+    const results = await lyricsService.searchAll(query, limit, { nsfw, nodeIds });
     res.json({
       status: 'success',
       query,
@@ -39,16 +56,44 @@ router.get('/search', async (req, res, next) => {
   }
 });
 
-// YouTube Video ID direct lookup & cache resolver
-router.get('/youtube/:videoId', async (req, res, next) => {
+// v2.1 — Trending tracks across active nodes (by view count, cached 5 min)
+router.get('/trending', trackApiKey, async (req: AuthenticatedRequest, res, next) => {
   try {
-    const videoId = req.params.videoId;
+    if (!hasReadPermission(req)) {
+      return res.status(403).json({ error: 'Forbidden: API key lacks "read" permission' });
+    }
+    const limit = Math.min(Math.max(parseInt((req.query.limit as string) || '10', 10), 1), 50);
+    const nsfw = req.query.nsfw === 'true' || req.query.nsfw === '1';
+    let tracks = await lyricsService.getTrending(limit, { nsfw });
+    const nodeIds = scopedNodeIds(req);
+    if (nodeIds) {
+      const allowed = new Set(nodeIds.map((n) => n.toLowerCase()));
+      tracks = tracks.filter((t) => allowed.has((t.node_id || '').toLowerCase()));
+    }
+    res.json({
+      status: 'success',
+      count: tracks.length,
+      results: tracks,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// YouTube Video ID direct lookup & cache resolver
+router.get('/youtube/:videoId', trackApiKey, async (req: AuthenticatedRequest, res, next) => {
+  try {
+    if (!hasReadPermission(req)) {
+      return res.status(403).json({ error: 'Forbidden: API key lacks "read" permission' });
+    }
+    const videoId = req.params.videoId as string;
     if (!videoId) {
       return res.status(400).json({ error: 'YouTube videoId parameter is required' });
     }
 
+    const nodeIds = scopedNodeIds(req);
     const result = await lyricsService.getByYouTubeId(videoId);
-    if (!result) {
+    if (!result || (nodeIds && !nodeIds.map((n) => n.toLowerCase()).includes((result.node_id || '').toLowerCase()))) {
       return res.status(404).json({
         status: 'not_found',
         message: `No cached lyrics found for YouTube Video ID "${videoId}"`,
@@ -107,9 +152,17 @@ router.post('/youtube/associate', requireAdminAuth, async (req, res, next) => {
 });
 
 // Get single lyrics record (supports JSON or raw TTML)
-router.get('/:nodeId/:id', async (req, res, next) => {
+router.get('/:nodeId/:id', trackApiKey, async (req: AuthenticatedRequest, res, next) => {
   try {
-    const { nodeId, id } = req.params;
+    if (!hasReadPermission(req)) {
+      return res.status(403).json({ error: 'Forbidden: API key lacks "read" permission' });
+    }
+    const nodeId = req.params.nodeId as string;
+    const id = req.params.id as string;
+    const nodeIds = scopedNodeIds(req);
+    if (nodeIds && !nodeIds.map((n) => n.toLowerCase()).includes(nodeId.toLowerCase())) {
+      return res.status(403).json({ error: `Forbidden: API key is not scoped to node "${nodeId}"` });
+    }
     const lyrics = await lyricsService.getLyricsById(nodeId, parseInt(id, 10));
     if (!lyrics) {
       return res.status(404).json({ error: `Lyrics not found in node "${nodeId}" with ID ${id}` });
@@ -130,9 +183,17 @@ router.get('/:nodeId/:id', async (req, res, next) => {
 });
 
 // Dedicated raw TTML endpoint
-router.get('/:nodeId/:id/ttml', async (req, res, next) => {
+router.get('/:nodeId/:id/ttml', trackApiKey, async (req: AuthenticatedRequest, res, next) => {
   try {
-    const { nodeId, id } = req.params;
+    if (!hasReadPermission(req)) {
+      return res.status(403).json({ error: 'Forbidden: API key lacks "read" permission' });
+    }
+    const nodeId = req.params.nodeId as string;
+    const id = req.params.id as string;
+    const nodeIds = scopedNodeIds(req);
+    if (nodeIds && !nodeIds.map((n) => n.toLowerCase()).includes(nodeId.toLowerCase())) {
+      return res.status(403).json({ error: `Forbidden: API key is not scoped to node "${nodeId}"` });
+    }
     const lyrics = await lyricsService.getLyricsById(nodeId, parseInt(id, 10));
     if (!lyrics || !lyrics.ttml_lyrics) {
       return res.status(404).json({ error: `TTML lyrics not available for track ID ${id}` });
@@ -147,7 +208,8 @@ router.get('/:nodeId/:id/ttml', async (req, res, next) => {
 // Update single lyrics record
 router.put('/:nodeId/:id', requireAdminAuth, async (req, res, next) => {
   try {
-    const { nodeId, id } = req.params;
+    const nodeId = req.params.nodeId as string;
+    const id = req.params.id as string;
     const success = await lyricsService.updateLyrics(nodeId, parseInt(id, 10), req.body);
     if (!success) {
       return res.status(404).json({ error: `Lyrics not found in node "${nodeId}" with ID ${id}` });
@@ -162,7 +224,8 @@ router.put('/:nodeId/:id', requireAdminAuth, async (req, res, next) => {
 // Delete single lyrics record
 router.delete('/:nodeId/:id', requireAdminAuth, async (req, res, next) => {
   try {
-    const { nodeId, id } = req.params;
+    const nodeId = req.params.nodeId as string;
+    const id = req.params.id as string;
     await lyricsService.deleteLyrics(nodeId, parseInt(id, 10));
     await logsService.recordAudit('LYRICS_DELETED', (req as any).user?.username, { nodeId, songId: id }, req.ip);
     res.json({ status: 'success', message: 'Lyrics record deleted' });
@@ -174,7 +237,7 @@ router.delete('/:nodeId/:id', requireAdminAuth, async (req, res, next) => {
 // Bulk import lyrics
 router.post('/:nodeId/bulk-import', requireAdminAuth, async (req, res, next) => {
   try {
-    const { nodeId } = req.params;
+    const nodeId = req.params.nodeId as string;
     const items = req.body.items;
     if (!Array.isArray(items)) {
       return res.status(400).json({ error: 'items array is required' });
@@ -198,7 +261,7 @@ router.post('/:nodeId/bulk-import', requireAdminAuth, async (req, res, next) => 
 // Export lyrics
 router.get('/:nodeId/export', requireAdminAuth, async (req, res, next) => {
   try {
-    const { nodeId } = req.params;
+    const nodeId = req.params.nodeId as string;
     const lyrics = await lyricsService.searchNode(nodeId, '', 10000);
     res.setHeader('Content-Disposition', `attachment; filename=semar-${nodeId}-lyrics-export.json`);
     res.json({

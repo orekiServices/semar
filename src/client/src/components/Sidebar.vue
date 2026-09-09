@@ -97,6 +97,23 @@
             <HardDrive class="w-4 h-4 text-red-400" />
             YouTube Cache
           </router-link>
+
+          <router-link
+            to="/admin/submissions"
+            class="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition"
+            :class="isActive('/admin/submissions') ? 'bg-violet-600 text-white shadow-md shadow-violet-600/25' : 'text-slate-300 hover:text-white hover:bg-slate-900'"
+          >
+            <div class="flex items-center gap-2.5">
+              <Inbox class="w-4 h-4 text-amber-400" />
+              Submissions
+            </div>
+            <span
+              v-if="pendingSubmissions > 0"
+              class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30"
+            >
+              {{ pendingSubmissions }}
+            </span>
+          </router-link>
         </div>
       </div>
 
@@ -219,7 +236,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth.store.js';
 import { useSystemStore } from '../stores/system.store.js';
@@ -233,6 +250,7 @@ import {
   FolderTree,
   Music,
   HardDrive,
+  Inbox,
   Info,
   Palette,
   FileCode,
@@ -249,6 +267,22 @@ const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
 const systemStore = useSystemStore();
+const pendingSubmissions = ref<number>(0);
+
+async function fetchPendingCount() {
+  try {
+    const token = localStorage.getItem('semar_token');
+    if (!token) return;
+    const res = await fetch('/api/admin/submissions/counts', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (data.counts) pendingSubmissions.value = data.counts.pending || 0;
+  } catch {}
+}
+
+onMounted(fetchPendingCount);
+watch(() => route.path, fetchPendingCount);
 
 function isActive(path: string): boolean {
   return route.path === path;

@@ -12,7 +12,7 @@
               {{ systemStore.branding.siteName || '⁠♡ Semar' }}
             </h1>
             <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 border border-violet-500/30 uppercase tracking-wide">
-              v2.0
+              v2.1
             </span>
           </div>
           <p class="text-[11px] text-slate-400 -mt-0.5 hidden sm:block">Self-Hosted Lyrics & SemAPI Engine</p>
@@ -55,6 +55,15 @@
         >
           <Info class="w-3.5 h-3.5" />
           About
+        </router-link>
+
+        <router-link
+          to="/submit"
+          class="px-3.5 py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1.5"
+          :class="$route.name === 'submit' ? 'bg-violet-600 text-white shadow-md shadow-violet-600/30' : 'text-slate-300 hover:text-white hover:bg-slate-800/60'"
+        >
+          <Upload class="w-3.5 h-3.5" />
+          Submit
         </router-link>
 
         <router-link
@@ -148,6 +157,7 @@ import {
   ShieldCheck,
   Lock,
   Wrench,
+  Upload,
 } from 'lucide-vue-next';
 
 const route = useRoute();

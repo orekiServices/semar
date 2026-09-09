@@ -22,9 +22,13 @@ export interface LyricsRecord {
 }
 
 export class LyricsService {
-  async searchAll(query: string, limit: number = 20, options: { nsfw?: boolean } = {}): Promise<LyricsRecord[]> {
+  async searchAll(query: string, limit: number = 20, options: { nsfw?: boolean; nodeIds?: string[] } = {}): Promise<LyricsRecord[]> {
     const nodes = await nodeService.listNodes();
-    const activeNodes = nodes.filter((n) => n.status === 'active' && (options.nsfw ? true : !n.is_nsfw));
+    // v2.1: optional node restriction (used by scoped API keys)
+    const allowed = options.nodeIds && options.nodeIds.length > 0 ? new Set(options.nodeIds.map((n) => n.toLowerCase())) : null;
+    const activeNodes = nodes.filter(
+      (n) => n.status === 'active' && (options.nsfw ? true : !n.is_nsfw) && (!allowed || allowed.has(n.node_id.toLowerCase()))
+    );
 
     const results: LyricsRecord[] = [];
     for (const node of activeNodes) {
@@ -115,6 +119,34 @@ export class LyricsService {
       is_explicit: Boolean(row.is_explicit),
       metadata: typeof row.metadata === 'string' ? JSON.parse(row.metadata || '{}') : row.metadata,
     };
+  }
+
+  /**
+   * v2.1 — Trending tracks: top records by views_count across all active
+   * public nodes. Cached in memory for 5 minutes.
+   */
+  async getTrending(limit: number = 10, options: { nsfw?: boolean } = {}): Promise<LyricsRecord[]> {
+    const cacheKey = `trending:${limit}:${options.nsfw ? 'nsfw' : 'safe'}`;
+    const cached = cacheService.get<LyricsRecord[]>(cacheKey);
+    if (cached) return cached;
+
+    const nodes = await nodeService.listNodes();
+    const activeNodes = nodes.filter((n) => n.status === 'active' && (options.nsfw ? true : !n.is_nsfw));
+
+    const perNode = Math.max(Math.ceil(limit / Math.max(activeNodes.length, 1)), 3);
+    const pooled: LyricsRecord[] = [];
+    for (const node of activeNodes) {
+      try {
+        const top = await this.searchNode(node.node_id, '', perNode);
+        pooled.push(...top);
+      } catch {
+        // ignore single-node errors
+      }
+    }
+    pooled.sort((a, b) => (b.views_count || 0) - (a.views_count || 0));
+    const result = pooled.slice(0, limit);
+    cacheService.set(cacheKey, result, 5 * 60 * 1000);
+    return result;
   }
 
   async getByYouTubeId(youtubeVideoId: string): Promise<LyricsRecord | null> {

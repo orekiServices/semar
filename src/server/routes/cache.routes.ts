@@ -54,6 +54,17 @@ router.post('/purge', requireAdminAuth, async (req, res, next) => {
   }
 });
 
+// v2.1 — Purge only TTL-expired YouTube cache rows (janitor)
+router.post('/purge-expired', requireAdminAuth, async (req, res, next) => {
+  try {
+    const resPurge = await cacheService.purgeExpired();
+    await logsService.recordAudit('CACHE_PURGED_EXPIRED', (req as any).user?.username, { purged: resPurge.purged }, req.ip);
+    res.json({ status: 'success', purged: resPurge.purged, message: `Purged ${resPurge.purged} expired cache entries.` });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/warmup', requireAdminAuth, async (req, res, next) => {
   try {
     const resWarm = await cacheService.warmup();

@@ -201,6 +201,59 @@ export class SemApiService {
     return true;
   }
 
+  /**
+   * v2.1 — Export a route as a portable JSON bundle (code + config, no stats).
+   */
+  async exportRoute(id: string): Promise<{ exportedAt: string; semarVersion: string; route: any } | null> {
+    const route = await this.getRoute(id);
+    if (!route) return null;
+    const {
+      total_calls, last_called_at, last_status, error_count, created_at, updated_at, ...portable
+    } = route as any;
+    return {
+      exportedAt: new Date().toISOString(),
+      semarVersion: '2.1.0',
+      route: portable,
+    };
+  }
+
+  /**
+   * v2.1 — Import one or many exported route bundles. ID collisions get a
+   * fresh unique id so imports never overwrite existing routes by accident.
+   */
+  async importRoutes(payload: any): Promise<SemApiRoute[]> {
+    const bundles: any[] = [];
+    if (Array.isArray(payload)) {
+      for (const item of payload) bundles.push(item?.route || item);
+    } else if (payload?.routes && Array.isArray(payload.routes)) {
+      for (const item of payload.routes) bundles.push(item?.route || item);
+    } else if (payload?.route) {
+      bundles.push(payload.route);
+    } else if (payload?.path && payload?.code) {
+      bundles.push(payload);
+    }
+
+    if (bundles.length === 0) {
+      throw Object.assign(new Error('No importable SemAPI routes found in payload'), { statusCode: 400 });
+    }
+
+    const created: SemApiRoute[] = [];
+    for (const b of bundles) {
+      if (!b.path || !b.code) continue;
+      let id = typeof b.id === 'string' && b.id.trim() ? b.id.trim() : undefined;
+      if (id && (await this.getRoute(id))) {
+        id = `${id}-import-${Math.random().toString(36).substring(2, 7)}`;
+      }
+      const route = await this.createRoute({ ...b, id });
+      created.push(route);
+    }
+
+    if (created.length === 0) {
+      throw Object.assign(new Error('No valid routes to import (each needs path + code)'), { statusCode: 400 });
+    }
+    return created;
+  }
+
   // Real server-side JavaScript execution engine
   async executeRouteCode(
     route: SemApiRoute,

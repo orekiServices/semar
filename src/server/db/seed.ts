@@ -582,4 +582,79 @@ export async function seedDatabase(db: DatabaseAdapter, forceAdmin: boolean = fa
       ]
     );
   }
+
+  // 7. Seed default SemAPI dynamic routes (idempotent per-route so upgrades backfill)
+  const defaultSemApiRoutes = [
+    {
+      id: 'route-fast-anime',
+      name: 'Fast Anime Search (Akai)',
+      path: '/v1/anime/search',
+      method: 'GET',
+      description: 'Blazing-fast anime & J-Pop lyrics search scoped to the Akai node partition.',
+      tags: ['Anime', 'Search', 'Akai'],
+      code: `async function handler(ctx) {
+  const q = (ctx.query.q || '').toString();
+  const limit = Math.min(parseInt(ctx.query.limit || '10', 10), 50);
+  ctx.log('Fast anime search:', q);
+  const results = await ctx.nodes.searchLyrics('akai', q, limit);
+  return ctx.json({ status: 'success', node: 'akai', query: q, count: results.length, results });
+}`,
+    },
+    {
+      id: 'route-global-search',
+      name: 'Global Lyrics Search',
+      path: '/v1/search',
+      method: 'GET',
+      description: 'Cross-node lyrics search across all active public partitions.',
+      tags: ['Search', 'Global'],
+      code: `async function handler(ctx) {
+  const q = (ctx.query.q || '').toString();
+  const limit = Math.min(parseInt(ctx.query.limit || '20', 10), 100);
+  const results = await ctx.lyrics.searchAll(q, limit);
+  return ctx.json({ status: 'success', query: q, count: results.length, results });
+}`,
+    },
+    {
+      id: 'route-youtube-resolve',
+      name: 'YouTube ID Resolver',
+      path: '/v1/resolve/youtube/:videoId',
+      method: 'GET',
+      description: 'Resolve synchronized lyrics directly from a YouTube Video ID via the cache pipeline.',
+      tags: ['YouTube', 'Cache'],
+      code: `async function handler(ctx) {
+  const videoId = (ctx.params.videoId || '').toString();
+  if (!videoId) return ctx.error('videoId path parameter is required', 400);
+  const lyrics = await ctx.lyrics.getByYouTubeId(videoId);
+  if (!lyrics) return ctx.error('No lyrics cached for YouTube ID ' + videoId, 404);
+  return ctx.json({ status: 'success', source: 'youtube_lyrics_cache', videoId, lyrics });
+}`,
+    },
+  ];
+
+  for (const route of defaultSemApiRoutes) {
+    const existing = await db.queryOne('SELECT id FROM semapi_routes WHERE id = ?', [route.id]);
+    if (!existing) {
+      await db.execute(
+        `INSERT INTO semapi_routes (id, name, path, method, enabled, auth_required, api_key_header, rate_limit_rpm, permissions, request_schema, response_schema, code, default_response, description, tags)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          route.id,
+          route.name,
+          route.path,
+          route.method,
+          isSqlite ? 1 : true,
+          isSqlite ? 0 : false,
+          'X-SemAPI-Key',
+          120,
+          stringify([]),
+          stringify({}),
+          stringify({}),
+          route.code,
+          stringify({ status: 'ok' }),
+          route.description,
+          stringify(route.tags),
+        ]
+      );
+    }
+  }
 }

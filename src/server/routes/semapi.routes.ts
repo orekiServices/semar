@@ -108,6 +108,33 @@ router.post('/test/:id', requireAdminAuth, async (req, res, next) => {
   }
 });
 
+// v2.1 — Export / Import portable route bundles
+router.get('/routes/:id/export', requireAdminAuth, async (req, res, next) => {
+  try {
+    const bundle = await semApiService.exportRoute(req.params.id as string);
+    if (!bundle) {
+      return res.status(404).json({ error: `Route "${req.params.id}" not found` });
+    }
+    res.setHeader('Content-Disposition', `attachment; filename=semapi-${req.params.id}-export.json`);
+    res.json(bundle);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/routes/import', requireAdminAuth, async (req, res, next) => {
+  try {
+    const created = await semApiService.importRoutes(req.body);
+    await logsService.recordAudit('SEMAPI_ROUTES_IMPORTED', (req as any).user?.username, { count: created.length }, req.ip);
+    res.status(201).json({ status: 'success', count: created.length, routes: created });
+  } catch (err: any) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
 // Logs & stats
 router.get('/logs', requireAdminAuth, async (req, res, next) => {
   try {

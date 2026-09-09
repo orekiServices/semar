@@ -1,0 +1,46 @@
+services:
+  # ── Semar lyrics engine ──────────────────────────────────────────
+  semar:
+    build: .
+    container_name: semar
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      # Uncomment to use the bundled Postgres instead of embedded SQLite:
+      # POSTGRES_URL: postgres://semar:semar_secret@postgres:5432/semar
+      JWT_SECRET: ${JWT_SECRET:-change_me_in_production}
+    volumes:
+      - semar-data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ── Production-grade Postgres (optional, for scale) ─────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: semar-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: semar
+      POSTGRES_PASSWORD: semar_secret
+      POSTGRES_DB: semar
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U semar -d semar"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  semar-data:
+  postgres-data:

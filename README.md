@@ -8,6 +8,8 @@
   <strong>Self-Hosted Synchronized Lyrics Database, Multi-Node Partition Engine & SemAPI JavaScript Runtime</strong>
 </p>
 
+> **v2.1 — What's New:** real request-metrics engine + Prometheus `/api/metrics`, community lyrics submissions with admin moderation queue, trending charts, opt-in API-key enforcement with per-key rate limits & node scoping, SemAPI export/import bundles, TTL cache janitor, config backups, Docker + CI, and seeded default SemAPI routes.
+
 <p align="center">
   <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2ForekiServices%2Fsemar"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
   <img src="https://img.shields.io/badge/Vercel-Production%20Ready-000000?style=flat&logo=vercel&logoColor=white" alt="Vercel Deployment" />
@@ -29,6 +31,9 @@
 - [Web Admin Setup & Control Panel](#-web-admin-setup--control-panel)
 - [Synchronized LRC Karaoke Player](#-synchronized-lrc-karaoke-player)
 - [REST API Reference](#-rest-api-reference)
+- [Community Submissions & Trending (v2.1)](#-community-submissions--trending-v21)
+- [Real Metrics & Prometheus (v2.1)](#-real-metrics--prometheus-v21)
+- [API Key Policies (v2.1)](#-api-key-policies-v21)
 - [Deployment & Setup](#-deployment--setup)
   - [Deploy to Vercel](#deploy-to-vercel)
   - [Self-Hosted (Docker & Node.js)](#self-hosted-docker--nodejs)
@@ -157,14 +162,59 @@ Semar includes 16 dedicated administration and customization interfaces:
 
 ### Core Endpoints
 - `GET /api/v1/lyrics/search?q={query}&limit={limit}` — Multi-node fuzzy lyrics search
+- `GET /api/v1/lyrics/trending?limit={limit}` — Trending tracks by play count (cached 5 min) · **v2.1**
 - `GET /api/v1/lyrics/youtube/:videoId` — Instant YouTube Video ID cache resolver
 - `POST /api/v1/lyrics/youtube/associate` — Map YouTube Video ID to track
+- `POST /api/v1/submissions` — Submit lyrics for moderator review (public, rate-limited) · **v2.1**
 - `GET /api/v1/nodes` — List active nodes and partition metadata
 - `GET /api/v1/nodes/:nodeId/lyrics` — Query specific node partition
 - `POST /api/v1/nodes/:nodeId/lyrics` — Insert lyrics into node table
 - `GET /api/v1/cache/stats` — Real-time memory and persistent cache metrics
 - `POST /api/v1/cache/warmup` — Warm up memory LRU cache
+- `POST /api/v1/cache/purge-expired` — Purge TTL-expired cache rows (admin) · **v2.1**
 - `ALL /api/semapi/run/:path*` — Execute dynamic administrator JavaScript SemAPI endpoints
+- `GET /api/semapi/routes/:id/export` — Download a portable route bundle (admin) · **v2.1**
+- `POST /api/semapi/routes/import` — Import route bundle(s) (admin) · **v2.1**
+- `GET /api/admin/submissions` — Moderation queue (admin) · **v2.1**
+- `POST /api/admin/submissions/:id/approve` — Approve & publish into a node (admin) · **v2.1**
+- `POST /api/admin/submissions/:id/reject` — Reject with reviewer note (admin) · **v2.1**
+- `GET /api/admin/stats/realtime` — Live metrics snapshot + real timeline (admin) · **v2.1**
+- `GET /api/admin/database/backup` — Portable JSON config backup (admin) · **v2.1**
+- `GET /api/metrics` — Prometheus exposition endpoint · **v2.1**
+
+---
+
+## ✦ Community Submissions & Trending (v2.1)
+
+Visitors can contribute lyrics at **`/submit`** — every submission lands in the admin **Submissions** moderation queue (`/admin/submissions`) with a pending badge in the sidebar. Approving publishes the track into the target node partition (LRC → TTML auto-conversion included); rejecting keeps an audit-trailed reviewer note. Anti-spam is built in: 10 req/min per IP plus a 10/day rolling cap.
+
+The home page shows a **Trending Now** strip powered by `GET /api/v1/lyrics/trending`, ranked by real play counts.
+
+---
+
+## ✦ Real Metrics & Prometheus (v2.1)
+
+The dashboard timeline is now **100% real traffic** — every request is recorded by a zero-DB-write in-memory engine (hourly buckets, per-route counters, latency), flushed to `system_metrics` every 5 minutes and merged with persisted history after restarts. Scrape `GET /api/metrics` with Prometheus:
+
+```yaml
+scrape_configs:
+  - job_name: semar
+    static_configs:
+      - targets: ['semar:3000']
+```
+
+A background **janitor** runs on boot and every 6 hours: purges TTL-expired YouTube cache rows and prunes `semapi_logs` (30d), `audit_logs` (90d) and `system_metrics` (30d). Disable with `DISABLE_JANITOR=1`.
+
+---
+
+## ✦ API Key Policies (v2.1)
+
+API keys are now enforced, not just issued:
+
+- **System Settings → Require API Key for Search**: when enabled, all public lyrics reads need a valid key (`X-API-Key` / `X-SemAPI-Key` header or `?apiKey=`).
+- **Per-key rate limits**: each key's `rate_limit_rpm` is enforced independently (HTTP 429 on breach).
+- **Node scoping**: keys with `node_restrictions` only see those partitions; `read` permission is required for lyrics reads.
+- YouTube cache rows accept an optional `ttlDays` for automatic janitor eviction.
 
 ---
 
@@ -181,6 +231,19 @@ Semar is optimized for Vercel Serverless Functions and Edge hosting:
 3. Deploy! Vercel automatically routes `/api/*` to `api/index.ts` and serves the compiled Vue 3 frontend from `dist/`.
 
 ### Self-Hosted (Docker & Node.js)
+
+**Docker (recommended)** — ships a multi-stage image with the Vue client pre-built:
+
+```bash
+# SQLite (zero-config, data persisted in a volume)
+docker compose up -d --build
+
+# ...or with the bundled PostgreSQL 16 for production scale:
+# 1. Uncomment POSTGRES_URL in docker-compose.yml
+# 2. docker compose up -d --build
+```
+
+**Plain Node.js:**
 
 ```bash
 # 1. Clone repository
@@ -221,6 +284,7 @@ The wizard guides you through:
 | `MYSQL_URL` | MySQL / MariaDB connection URL | - |
 | `SQLITE_PATH` | Path to embedded SQLite database | `./data/semar.db` |
 | `JWT_SECRET` | Secret key for JWT admin tokens | `semar_secret` |
+| `DISABLE_JANITOR` | Disable the TTL/log janitor scheduler | unset (enabled) |
 | `NODE_ENV` | Environment mode | `production` |
 
 ---
