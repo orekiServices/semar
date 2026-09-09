@@ -117,7 +117,14 @@
             </td>
             <td class="p-3.5 font-mono text-slate-300">{{ track.views_count?.toLocaleString() || 0 }}</td>
             <td class="p-3.5 text-right">
-              <div class="flex items-center justify-end gap-1.5">
+              <span
+                v-if="isSpecialTrack(track)"
+                class="text-[10px] font-bold px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 uppercase"
+                title="Read-only track from an external library"
+              >
+                External
+              </span>
+              <div v-else class="flex items-center justify-end gap-1.5">
                 <button
                   @click="openEditModal(track)"
                   class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
@@ -150,7 +157,7 @@
               :disabled="isEditing"
               class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-mono focus:outline-none focus:border-violet-500"
             >
-              <option v-for="n in nodes" :key="n.node_id" :value="n.node_id">
+              <option v-for="n in nodes.filter((x: any) => !x.is_special)" :key="n.node_id" :value="n.node_id">
                 {{ n.node_id.toUpperCase() }} ({{ n.name }})
               </option>
             </select>
@@ -297,7 +304,7 @@
             v-model="importTargetNode"
             class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-mono"
           >
-            <option v-for="n in nodes" :key="n.node_id" :value="n.node_id">{{ n.node_id.toUpperCase() }} ({{ n.name }})</option>
+            <option v-for="n in nodes.filter((x: any) => !x.is_special)" :key="n.node_id" :value="n.node_id">{{ n.node_id.toUpperCase() }} ({{ n.name }})</option>
           </select>
         </div>
 
@@ -362,7 +369,7 @@ const saving = ref<boolean>(false);
 const lyricsTab = ref<'synced' | 'ttml' | 'plain'>('synced');
 const trackForm = ref<any>({
   id: undefined,
-  node_id: 'akai',
+  node_id: '',
   title: '',
   artist: '',
   album: '',
@@ -376,7 +383,7 @@ const trackForm = ref<any>({
 
 // Import modal
 const showImportModal = ref<boolean>(false);
-const importTargetNode = ref<string>('akai');
+const importTargetNode = ref<string>('');
 const importJson = ref<string>('[\n  {\n    "title": "Sample Song",\n    "artist": "Sample Artist",\n    "album": "Sample Album",\n    "synced_lyrics": "[00:00.00] Intro\\n[00:05.00] First Verse"\n  }\n]');
 
 onMounted(async () => {
@@ -389,6 +396,7 @@ async function fetchNodes() {
     const res = await fetch('/api/v1/nodes');
     const data = await res.json();
     nodes.value = data.nodes || [];
+    specialNodeIds.value = nodes.value.filter((n: any) => n.is_special).map((n: any) => n.node_id);
   } catch {}
 }
 
@@ -420,7 +428,7 @@ function openCreateModal() {
   lyricsTab.value = 'synced';
   trackForm.value = {
     id: undefined,
-    node_id: nodes.value[0]?.node_id || 'akai',
+    node_id: nodes.value.find((n: any) => !n.is_special)?.node_id || '',
     title: '',
     artist: '',
     album: '',
@@ -602,8 +610,15 @@ async function runBulkImport() {
   }
 }
 
+const specialNodeIds = ref<string[]>([]);
+
+function isSpecialTrack(track: any): boolean {
+  return specialNodeIds.value.includes(track.node_id);
+}
+
 function exportNodeLyrics() {
-  const target = selectedNode.value === 'all' ? 'akai' : selectedNode.value;
+  const target = selectedNode.value === 'all' ? (nodes.value.find((n: any) => !n.is_special)?.node_id || '') : selectedNode.value;
+  if (!target) { systemStore.addToast('No local node', 'Create a node before exporting.', 'warning'); return; }
   window.open(`/api/v1/lyrics/${target}/export`, '_blank');
 }
 </script>

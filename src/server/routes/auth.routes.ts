@@ -45,7 +45,7 @@ router.post('/change-password', requireAdminAuth, async (req: AuthenticatedReque
       return res.status(400).json({ error: 'Current password is incorrect' });
     }
 
-    await authService.changeAdminPassword(req.user.id, newPassword);
+    await authService.changeAdminPassword(req.user.username, newPassword);
     await logsService.recordAudit('PASSWORD_CHANGED', req.user.username, {}, req.ip);
     res.json({ success: true, message: 'Password updated successfully' });
   } catch (err) {

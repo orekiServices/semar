@@ -16,6 +16,15 @@
 
       <div class="flex items-center gap-2.5">
         <button
+          @click="triggerImport"
+          class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold transition flex items-center gap-2"
+          title="Import route bundle(s) from JSON"
+        >
+          <FileUp class="w-4 h-4 text-emerald-400" />
+          Import
+        </button>
+        <input ref="importInput" type="file" accept="application/json,.json" class="hidden" @change="handleImportFile" />
+        <button
           @click="openLogsModal"
           class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold transition flex items-center gap-2"
         >
@@ -168,6 +177,15 @@
               <Edit3 class="w-4 h-4" />
             </button>
 
+            <!-- Export Button -->
+            <button
+              @click="exportRoute(route)"
+              class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition"
+              title="Export route as JSON bundle"
+            >
+              <Download class="w-4 h-4" />
+            </button>
+
             <!-- Toggle Enable -->
             <button
               @click="toggleRoute(route)"
@@ -265,7 +283,7 @@
               v-model="tagsInput"
               type="text"
               class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs focus:outline-none focus:border-violet-500"
-              placeholder="Anime, Fast, Akai"
+              placeholder="Lyrics, Search, AI"
             />
           </div>
         </div>
@@ -475,11 +493,14 @@ import {
   Power,
   RefreshCw,
   Terminal,
+  Download,
+  FileUp,
 } from 'lucide-vue-next';
 
 const systemStore = useSystemStore();
 const routes = ref<any[]>([]);
 const loading = ref<boolean>(true);
+const importInput = ref<HTMLInputElement | null>(null);
 
 // Edit/Create Modal State
 const showEditModal = ref<boolean>(false);
@@ -630,6 +651,56 @@ async function deleteRoute(id: string) {
       await fetchRoutes();
     }
   } catch {}
+}
+
+async function exportRoute(route: any) {
+  try {
+    const token = localStorage.getItem('semar_token');
+    const res = await fetch(`/api/semapi/routes/${route.id}/export`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error('Export failed');
+    const bundle = await res.json();
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `semapi-${route.id}-export.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    systemStore.addToast('Exported', `Route "${route.name}" downloaded as JSON bundle.`, 'success');
+  } catch (err: any) {
+    systemStore.addToast('Export failed', err.message, 'error');
+  }
+}
+
+function triggerImport() {
+  importInput.value?.click();
+}
+
+async function handleImportFile(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0];
+  if (importInput.value) importInput.value.value = '';
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const payload = JSON.parse(text);
+    const token = localStorage.getItem('semar_token');
+    const res = await fetch('/api/semapi/routes/import', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Import failed');
+    systemStore.addToast('Imported!', `${data.count} SemAPI route(s) registered from bundle.`, 'success');
+    await fetchRoutes();
+  } catch (err: any) {
+    systemStore.addToast('Import failed', err.message, 'error');
+  }
 }
 
 function openTestModal(route: any) {

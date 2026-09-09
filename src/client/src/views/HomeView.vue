@@ -6,13 +6,13 @@
       <div class="relative z-10 max-w-3xl mx-auto space-y-4">
         <span class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-violet-500/15 border border-violet-500/30 text-violet-300 text-xs font-bold tracking-wide">
           <Sparkles class="w-3.5 h-3.5 text-pink-400" />
-          <span>Multi-Node PostgreSQL Lyrics Engine</span>
+          <span>Self-Hosted Lyrics Engine</span>
         </span>
         <h2 class="text-3xl sm:text-5xl font-black text-white tracking-tight leading-tight">
           {{ systemStore.branding.heroTitle || 'Find & Synchronize Every Lyric' }}
         </h2>
         <p class="text-sm sm:text-base text-slate-300 leading-relaxed max-w-2xl mx-auto">
-          {{ systemStore.branding.heroSubtitle || 'Explore over 780,000 synchronized tracks across isolated high-speed nodes with millisecond LRC accuracy.' }}
+          {{ systemStore.branding.heroSubtitle || 'Search your lyric nodes and external libraries — with millisecond LRC accuracy.' }}
         </p>
 
         <!-- Search Bar Box -->
@@ -48,7 +48,7 @@
               :class="selectedNodeFilter === 'all' ? 'bg-violet-600 text-white shadow-md shadow-violet-600/30' : 'bg-slate-900/80 text-slate-400 hover:text-white border border-slate-800'"
             >
               <Layers class="w-3 h-3" />
-              All Nodes (780k+)
+              All Nodes
             </button>
             <button
               v-for="node in systemStore.activeNodes"
@@ -58,7 +58,16 @@
               :class="selectedNodeFilter === node.node_id ? 'bg-violet-600 text-white shadow-md shadow-violet-600/30' : 'bg-slate-900/80 text-slate-400 hover:text-white border border-slate-800'"
             >
               <span>{{ node.node_id.toUpperCase() }}</span>
-              <span v-if="node.is_nsfw" class="text-[9px] px-1 rounded bg-rose-500/20 text-rose-300">NSFW</span>
+              <span v-if="node.is_special" class="text-[9px] px-1 rounded bg-cyan-500/20 text-cyan-300">EXT</span>
+              <span v-else-if="node.is_nsfw" class="text-[9px] px-1 rounded bg-rose-500/20 text-rose-300">NSFW</span>
+            </button>
+            <button
+              @click="surpriseMe"
+              class="px-3.5 py-1 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 bg-slate-900/80 text-slate-400 hover:text-white border border-slate-800"
+              title="Play a random track from your nodes"
+            >
+              <Dices class="w-3 h-3" />
+              Surprise me
             </button>
           </div>
         </div>
@@ -97,6 +106,35 @@
       </div>
     </div>
 
+    <!-- Trending Now Strip (v2.1) -->
+    <div v-if="trending.length > 0 && !searchQuery" class="space-y-4">
+      <div class="flex items-center gap-2.5">
+        <TrendingUp class="w-5 h-5 text-pink-400" />
+        <h3 class="text-xl font-black text-white">Trending Now</h3>
+        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pink-500/15 text-pink-300 border border-pink-500/30 uppercase">Live · by plays</span>
+      </div>
+      <div class="flex gap-4 overflow-x-auto pb-3 -mx-1 px-1">
+        <button
+          v-for="(track, idx) in trending"
+          :key="`trend-${track.node_id}-${track.id}`"
+          @click="openKaraoke(track)"
+          class="group shrink-0 w-56 text-left glass-card rounded-2xl p-4 transition-all duration-300 hover:border-pink-500/50 hover:shadow-2xl hover:shadow-pink-950/40 relative overflow-hidden"
+        >
+          <div class="flex items-start justify-between gap-2">
+            <span class="text-2xl font-black text-slate-700 group-hover:text-pink-500/60 transition-colors font-mono">#{{ idx + 1 }}</span>
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-violet-500/15 text-violet-300 border border-violet-500/30">{{ track.node_id }}</span>
+          </div>
+          <h4 class="font-bold text-sm text-white truncate mt-2 group-hover:text-pink-300 transition-colors">{{ track.title }}</h4>
+          <p class="text-xs text-slate-400 truncate">{{ track.artist }}</p>
+          <div class="flex items-center gap-1.5 mt-2 text-[11px] text-slate-500">
+            <Eye class="w-3 h-3" />
+            <span class="font-mono">{{ formatViews(track.views_count) }} plays</span>
+            <Play class="w-3 h-3 ml-auto text-slate-600 group-hover:text-pink-400 transition-colors" />
+          </div>
+        </button>
+      </div>
+    </div>
+
     <!-- Lyrics Search Results or Top Catalog -->
     <div class="space-y-6">
       <div class="flex items-center justify-between">
@@ -111,7 +149,7 @@
         <div v-if="hasExplicitTracks" class="flex items-center gap-2 text-xs text-slate-400">
           <label class="flex items-center gap-1.5 cursor-pointer">
             <input type="checkbox" v-model="showNsfw" class="rounded accent-rose-500" />
-            <span>Show 18+ (PAKAI) Tracks</span>
+            <span>Show 18+ explicit tracks</span>
           </label>
         </div>
       </div>
@@ -119,7 +157,7 @@
       <!-- Loading State -->
       <div v-if="loading" class="py-16 text-center text-slate-500 flex flex-col items-center">
         <RefreshCw class="w-8 h-8 animate-spin text-violet-400 mb-2" />
-        <p class="text-sm">Querying isolated node partitions...</p>
+        <p class="text-sm">Searching nodes and libraries...</p>
       </div>
 
       <!-- Empty State -->
@@ -129,6 +167,22 @@
         <p class="text-xs text-slate-400 max-w-sm mx-auto">
           We couldn't find any lyrics matching your query. Try searching by song name, artist, or YouTube video ID.
         </p>
+        <div class="flex items-center justify-center gap-3 flex-wrap">
+          <router-link
+            to="/submit"
+            class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/40 border border-emerald-500/30 text-emerald-300 text-xs font-bold transition"
+          >
+            <Upload class="w-3.5 h-3.5" />
+            Know these lyrics? Submit them
+          </router-link>
+          <router-link
+            to="/ai"
+            class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-violet-600/20 hover:bg-violet-600/40 border border-violet-500/30 text-violet-300 text-xs font-bold transition"
+          >
+            <Sparkles class="w-3.5 h-3.5" />
+            Try the AI Finder
+          </router-link>
+        </div>
       </div>
 
       <!-- Track Cards Grid -->
@@ -159,7 +213,8 @@
 
               <!-- Node Pill -->
               <span
-                class="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-violet-500/15 text-violet-300 border border-violet-500/30 shrink-0"
+                class="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase shrink-0"
+                :class="isSpecialNode(track.node_id) ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30' : 'bg-violet-500/15 text-violet-300 border border-violet-500/30'"
               >
                 {{ track.node_id }}
               </span>
@@ -198,7 +253,7 @@
             </button>
 
             <router-link
-              :to="`/lyrics/${track.node_id}/${track.id}`"
+              :to="`/lyrics/${track.node_id}/${encodeURIComponent(track.id)}`"
               class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-medium text-xs transition flex items-center gap-1"
             >
               <Eye class="w-3.5 h-3.5" />
@@ -251,7 +306,10 @@ import {
   Play,
   Eye,
   RefreshCw,
+  TrendingUp,
+  Upload,
   X,
+  Dices,
 } from 'lucide-vue-next';
 
 const systemStore = useSystemStore();
@@ -262,6 +320,7 @@ const selectedNodeFilter = ref<string>('all');
 const showNsfw = ref<boolean>(false);
 const loading = ref<boolean>(false);
 const allResults = ref<any[]>([]);
+const trending = ref<any[]>([]);
 const ytInput = ref<string>('');
 const resolvingYt = ref<boolean>(false);
 
@@ -272,7 +331,25 @@ let debounceTimer: any = null;
 
 onMounted(async () => {
   await fetchFeaturedTracks();
+  await fetchTrending();
 });
+
+async function fetchTrending() {
+  try {
+    const res = await fetch('/api/v1/lyrics/trending?limit=8');
+    const data = await res.json();
+    if (data.results) {
+      trending.value = data.results;
+    }
+  } catch {}
+}
+
+function formatViews(views: number): string {
+  if (!views) return '0';
+  if (views >= 1000000) return (views / 1000000).toFixed(1) + 'M';
+  if (views >= 1000) return (views / 1000).toFixed(1) + 'k';
+  return String(views);
+}
 
 async function fetchFeaturedTracks() {
   loading.value = true;
@@ -349,7 +426,7 @@ const filteredResults = computed(() => {
     if (selectedNodeFilter.value !== 'all' && t.node_id !== selectedNodeFilter.value) {
       return false;
     }
-    if (t.is_explicit && !showNsfw.value && selectedNodeFilter.value !== 'pakai') {
+    if (t.is_explicit && !showNsfw.value) {
       return false;
     }
     return true;
@@ -359,6 +436,22 @@ const filteredResults = computed(() => {
 const hasExplicitTracks = computed(() => {
   return allResults.value.some((t) => t.is_explicit);
 });
+
+function isSpecialNode(nodeId: string): boolean {
+  return systemStore.activeNodes.some((n: any) => n.node_id === nodeId && n.is_special);
+}
+
+async function surpriseMe() {
+  try {
+    const res = await fetch('/api/v1/lyrics/random');
+    const data = await res.json();
+    if (res.ok && data.track) {
+      openKaraoke(data.track);
+    } else {
+      systemStore.addToast('Catalog is empty', 'Add lyrics to a node first — or search the external libraries.', 'warning');
+    }
+  } catch {}
+}
 
 function getSnippet(track: any): string {
   if (track.plain_lyrics) {

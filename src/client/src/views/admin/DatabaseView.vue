@@ -8,7 +8,7 @@
             {{ dbInfo?.type?.toUpperCase() || 'POSTGRESQL' }}
           </span>
         </div>
-        <p class="text-xs text-slate-400 mt-1">First-class PostgreSQL, MySQL, and SQLite multi-node partition inspection.</p>
+        <p class="text-xs text-slate-400 mt-1">Postgres-only multi-node partition inspection (PostgreSQL, PGlite embedded, or MySQL).</p>
       </div>
 
       <button
@@ -84,7 +84,7 @@
           >
             <option value="postgres">PostgreSQL (Production standard)</option>
             <option value="mysql">MySQL / MariaDB</option>
-            <option value="sqlite">SQLite (Embedded)</option>
+            <option value="pglite">PGlite (Embedded Postgres)</option>
           </select>
         </div>
 
@@ -95,7 +95,7 @@
             type="text"
             required
             class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-mono"
-            :placeholder="switchForm.type === 'postgres' ? 'postgres://user:pass@host:5432/semar' : './data/semar.db'"
+            :placeholder="switchForm.type === 'postgres' ? 'postgres://user:pass@host:5432/semar' : switchForm.type === 'mysql' ? 'mysql://user:pass@host:3306/semar' : '(optional) /path/to/pglite-data — blank = in-memory'"
           />
         </div>
 
@@ -182,7 +182,7 @@ async function runQuery() {
 
 function openSwitchModal() {
   switchForm.value.type = dbInfo.value?.type || 'postgres';
-  switchForm.value.connectionString = switchForm.value.type === 'sqlite' ? './data/semar.db' : '';
+  switchForm.value.connectionString = '';
   showSwitchModal.value = true;
 }
 

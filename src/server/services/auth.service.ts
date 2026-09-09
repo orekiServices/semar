@@ -36,18 +36,18 @@ export class AuthService {
     const match = await bcrypt.compare(passwordPlain, user.password_hash);
     if (!match) return null;
 
-    // Update last login
-    await db.execute('UPDATE admin_users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?', [user.id]);
+    // Update last login (v2.2: admin_users is keyed by username)
+    await db.execute('UPDATE admin_users SET last_login_at = CURRENT_TIMESTAMP WHERE username = ?', [user.username]);
 
     const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role },
+      { username: user.username, role: user.role },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
 
     return {
       user: {
-        id: user.id,
+        id: 0,
         username: user.username,
         role: user.role,
         api_key: user.api_key,
@@ -69,7 +69,7 @@ export class AuthService {
   async getAdminCount(): Promise<number> {
     const db = getDb();
     const res = await db.queryOne<{ count: number }>('SELECT COUNT(*) as count FROM admin_users');
-    return res?.count || 0;
+    return Number(res?.count) || 0;
   }
 
   async createAdminUser(username: string, passwordPlain: string, role: string = 'superadmin'): Promise<AdminUser> {
@@ -82,19 +82,21 @@ export class AuthService {
       [username, hash, role, masterApiKey]
     );
 
+    void res;
     return {
-      id: Number(res.insertId),
+      id: 0, // admin_users is keyed by username; kept for shape compat
       username,
       role,
       api_key: masterApiKey,
     };
   }
 
-  async changeAdminPassword(userId: number, newPasswordPlain: string): Promise<boolean> {
+  async changeAdminPassword(username: string, newPasswordPlain: string): Promise<boolean> {
     const db = getDb();
     const hash = await bcrypt.hash(newPasswordPlain, 10);
-    await db.execute('UPDATE admin_users SET password_hash = ? WHERE id = ?', [hash, userId]);
-    return true;
+    // v2.2: admin_users is keyed by username (no numeric id column)
+    const res = await db.execute('UPDATE admin_users SET password_hash = ? WHERE username = ?', [hash, username]);
+    return res.rowsAffected > 0;
   }
 
   // API Key management
@@ -118,10 +120,9 @@ export class AuthService {
   async generateApiKey(name: string, permissions: string[] = ['read'], nodeRestrictions: string[] = [], rateLimitRpm: number = 120): Promise<{ keyItem: ApiKeyItem; rawKey: string }> {
     const db = getDb();
     const rawKey = 'semar_key_' + uuidv4().replace(/-/g, '');
-    const prefix = rawKey.substring(0, 14) + '...';
+    const prefix = rawKey.substring(0, 12) + '...';
     const keyHash = await bcrypt.hash(rawKey, 10);
     const id = 'key-' + uuidv4().substring(0, 8);
-    const isSqlite = db.type === 'sqlite';
 
     await db.execute(
       `INSERT INTO api_keys (id, key_hash, key_prefix, name, permissions, node_restrictions, rate_limit_rpm, is_active)
@@ -134,7 +135,7 @@ export class AuthService {
         JSON.stringify(permissions),
         JSON.stringify(nodeRestrictions),
         rateLimitRpm,
-        isSqlite ? 1 : true,
+        true,
       ]
     );
 
@@ -156,7 +157,7 @@ export class AuthService {
   async validateApiKey(rawKey: string): Promise<ApiKeyItem | null> {
     if (!rawKey) return null;
     const db = getDb();
-    const keys = await db.query<any>('SELECT * FROM api_keys WHERE is_active = ?', [db.type === 'sqlite' ? 1 : true]);
+    const keys = await db.query<any>('SELECT * FROM api_keys WHERE is_active = ?', [true]);
 
     for (const k of keys) {
       const match = await bcrypt.compare(rawKey, k.key_hash);
@@ -193,8 +194,7 @@ export class AuthService {
 
   async toggleApiKey(id: string, active: boolean): Promise<boolean> {
     const db = getDb();
-    const isSqlite = db.type === 'sqlite';
-    await db.execute('UPDATE api_keys SET is_active = ? WHERE id = ?', [active ? (isSqlite ? 1 : true) : (isSqlite ? 0 : false), id]);
+    await db.execute('UPDATE api_keys SET is_active = ? WHERE id = ?', [Boolean(active), id]);
     return true;
   }
 }

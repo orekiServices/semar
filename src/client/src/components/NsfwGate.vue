@@ -8,7 +8,7 @@
     </span>
     <h3 class="text-2xl font-black text-white mt-4 mb-2">Mature Content Warning</h3>
     <p class="text-sm text-slate-300 leading-relaxed mb-6">
-      The <span class="font-bold text-rose-300">PAKAI</span> node and tagged mature tracks contain uncensored explicit lyrics, heavy language, or underground themes.
+      This <span class="font-bold text-rose-300">mature (18+) node</span> and tagged explicit tracks contain uncensored explicit lyrics, heavy language, or underground themes.
       Please confirm you are at least 18 years of age to proceed.
     </p>
 

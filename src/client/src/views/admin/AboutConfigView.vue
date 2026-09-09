@@ -70,7 +70,7 @@ const saving = ref<boolean>(false);
 
 const form = ref<any>({
   title: 'About Semar Engine',
-  badge: 'v2.0.0 PostgreSQL Edition',
+  badge: 'v2.2.0 MIN-AI Edition',
   summary: '',
   content: '',
   links: [],

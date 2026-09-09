@@ -41,9 +41,8 @@
               v-model="form.defaultNode"
               class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-mono focus:outline-none focus:border-violet-500"
             >
-              <option value="akai">Akai (Eastern & Anime)</option>
-              <option value="pine">PiNE (Global Hits)</option>
-              <option value="pakai">PAKAI (Mature)</option>
+              <option value="">— No preference —</option>
+              <option v-for="n in localNodes" :key="n.node_id" :value="n.node_id">{{ n.name }} ({{ n.node_id }})</option>
             </select>
           </div>
 
@@ -79,6 +78,54 @@
             </label>
           </div>
         </div>
+
+        <!-- v2.1 Access Policies -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+          <div class="flex items-start gap-3 p-3 bg-slate-950 rounded-xl border border-slate-800">
+            <input
+              type="checkbox"
+              id="req_api_key"
+              v-model="form.requireApiKeyForSearch"
+              class="rounded accent-amber-500 w-4 h-4 mt-0.5"
+            />
+            <div>
+              <label for="req_api_key" class="text-xs text-slate-200 font-semibold cursor-pointer block">
+                Require API Key for Search
+              </label>
+              <p class="text-[11px] text-slate-500 mt-0.5">Public lyrics reads need a valid key (scoped keys enforced per-node).</p>
+            </div>
+          </div>
+
+          <div class="flex items-start gap-3 p-3 bg-slate-950 rounded-xl border border-slate-800">
+            <input
+              type="checkbox"
+              id="allow_subs"
+              v-model="form.allowPublicSubmissions"
+              class="rounded accent-emerald-500 w-4 h-4 mt-0.5"
+            />
+            <div>
+              <label for="allow_subs" class="text-xs text-slate-200 font-semibold cursor-pointer block">
+                Allow Public Submissions
+              </label>
+              <p class="text-[11px] text-slate-500 mt-0.5">Visitors can submit lyrics to the moderation queue.</p>
+            </div>
+          </div>
+
+          <div class="flex items-start gap-3 p-3 bg-slate-950 rounded-xl border border-slate-800">
+            <input
+              type="checkbox"
+              id="enable_external"
+              v-model="form.enableExternalNodes"
+              class="rounded accent-cyan-500 w-4 h-4 mt-0.5"
+            />
+            <div>
+              <label for="enable_external" class="text-xs text-slate-200 font-semibold cursor-pointer block">
+                Enable External Library Nodes
+              </label>
+              <p class="text-[11px] text-slate-500 mt-0.5">Include LRCLIB & lyrics.ovh results in global search (takes effect within a minute).</p>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="flex items-center justify-end gap-3">
@@ -105,11 +152,16 @@ const saving = ref<boolean>(false);
 const dbType = ref<string>('postgres');
 const envInfo = ref<any>(null);
 
+const localNodes = ref<any[]>([]);
+
 const form = ref<any>({
-  defaultNode: 'akai',
+  defaultNode: '',
+  enableExternalNodes: true,
   cacheTtlSeconds: 86400,
   memoryCacheCapacity: 5000,
   maintenanceMode: false,
+  requireApiKeyForSearch: false,
+  allowPublicSubmissions: true,
 });
 
 onMounted(async () => {
@@ -120,10 +172,16 @@ onMounted(async () => {
     });
     const data = await res.json();
     if (data.settings?.system_settings) {
-      form.value = { ...data.settings.system_settings };
+      form.value = { ...form.value, ...data.settings.system_settings };
     }
     dbType.value = data.databaseType || 'postgres';
     envInfo.value = data.environment;
+  } catch {}
+
+  try {
+    const resNodes = await fetch('/api/v1/nodes');
+    const dataNodes = await resNodes.json();
+    localNodes.value = (dataNodes.nodes || []).filter((n: any) => !n.is_special);
   } catch {}
 });
 

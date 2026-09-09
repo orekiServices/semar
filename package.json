@@ -1,7 +1,7 @@
 {
   "name": "semar",
-  "version": "2.0.0",
-  "description": "Semar - Self-hosted lyrics database with node isolation, PostgreSQL/MySQL/SQLite support, SemAPI dynamic routes, and YouTube Video ID caching.",
+  "version": "2.2.0",
+  "description": "Semar - Self-hosted lyrics database with node isolation, Postgres support, SemAPI dynamic routes, YouTube caching, external library nodes, and MIN-AI Markov lyrics engine.",
   "type": "module",
   "main": "src/server/index.ts",
   "scripts": {
@@ -10,7 +10,7 @@
     "build": "npm run build:client",
     "start": "tsx src/server/index.ts",
     "seed": "tsx src/server/db/seed.ts",
-    "test": "node --import tsx --test test/semar.test.ts"
+    "test": "USE_PGLITE=1 node --import tsx --test test/semar.test.ts test/semar-v21.test.ts test/semar-v22.test.ts"
   },
   "keywords": [
     "semar",
@@ -30,7 +30,6 @@
   "dependencies": {
     "@uimaxbai/am-lyrics": "^1.6.2",
     "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^13.0.3",
     "canvas-confetti": "^1.9.4",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
@@ -46,9 +45,9 @@
     "vue-router": "^4.5.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@tailwindcss/vite": "^4.0.9",
     "@types/bcryptjs": "^2.4.6",
-    "@types/better-sqlite3": "^7.6.12",
     "@types/canvas-confetti": "^1.9.0",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",

@@ -35,7 +35,7 @@
             <div class="w-full h-3 rounded-full bg-slate-800 overflow-hidden">
               <div
                 class="h-full rounded-full transition-all duration-500"
-                :class="node.isNsfw ? 'bg-rose-500' : node.nodeId === 'akai' ? 'bg-violet-500' : 'bg-emerald-500'"
+                :class="node.isNsfw ? 'bg-rose-500' : 'bg-violet-500'"
                 :style="{ width: `${Math.min(100, Math.max(8, (node.approx / 500000) * 100))}%` }"
               ></div>
             </div>

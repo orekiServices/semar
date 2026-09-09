@@ -8,6 +8,8 @@
   <strong>Self-Hosted Synchronized Lyrics Database, Multi-Node Partition Engine & SemAPI JavaScript Runtime</strong>
 </p>
 
+> **v2.2 — What's New:** Postgres-only engine (SQLite removed — boots cleanly on Vercel serverless), zero default nodes, third-party lyrics libraries as read-only **special nodes** (LRCLIB + lyrics.ovh), **MIN-AI** Markov lyric generator + AI Finder + similar tracks with a public AI Studio, random-track endpoint, minimalist UI refresh, and a hardened self-contained test suite (33 tests on in-process PGlite).
+
 <p align="center">
   <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2ForekiServices%2Fsemar"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
   <img src="https://img.shields.io/badge/Vercel-Production%20Ready-000000?style=flat&logo=vercel&logoColor=white" alt="Vercel Deployment" />
@@ -29,6 +31,11 @@
 - [Web Admin Setup & Control Panel](#-web-admin-setup--control-panel)
 - [Synchronized LRC Karaoke Player](#-synchronized-lrc-karaoke-player)
 - [REST API Reference](#-rest-api-reference)
+- [External Library Nodes (v2.2)](#-external-library-nodes-v22)
+- [MIN-AI — AI for Lyrics (v2.2)](#-min-ai--ai-for-lyrics-v22)
+- [Community Submissions & Trending (v2.1)](#-community-submissions--trending-v21)
+- [Real Metrics & Prometheus (v2.1)](#-real-metrics--prometheus-v21)
+- [API Key Policies (v2.1)](#-api-key-policies-v21)
 - [Deployment & Setup](#-deployment--setup)
   - [Deploy to Vercel](#deploy-to-vercel)
   - [Self-Hosted (Docker & Node.js)](#self-hosted-docker--nodejs)
@@ -56,27 +63,30 @@ Semar eliminates the bottleneck of one giant monolithic lyrics table by introduc
          ┌─────────────────────────────┼─────────────────────────────┐
          ▼                             ▼                             ▼
   ┌──────────────┐              ┌──────────────┐              ┌──────────────┐
-  │  Akai Node   │              │  PiNE Node   │              │  PAKAI Node  │
-  │ (J-Pop/Anime)│              │(Global Catalog│             │(Mature/18+)  │
-  │ ~280k scale  │              │ ~500k scale  │              │  ~3k scale   │
+  │  Your Node   │              │  Your Node   │              │ Special Node │
+  │  (e.g. anime)│              │ (e.g. kpop)  │              │(lrclib/lyrics-│
+  │  you create  │              │  you create  │              │   ovh, live) │
   └──────┬───────┘              └──────┬───────┘              └──────┬───────┘
          │                             │                             │
          ▼                             ▼                             ▼
   ┌──────────────┐              ┌──────────────┐              ┌──────────────┐
-  │ lyrics_akai  │              │ lyrics_pine  │              │ lyrics_pakai │
-  │ (Table/JSONB)│              │ (Table/JSONB)│              │ (Table/JSONB)│
+  │ lyrics_anime │              │ lyrics_kpop  │              │ 3rd-party API│
+  │ (Table/JSONB)│              │ (Table/JSONB)│              │ (read-only)  │
   └──────────────┘              └──────────────┘              └──────────────┘
 ```
 
-### Pre-Configured Default Nodes
+### No Default Nodes — You Own the Catalog
 
-| Node ID | Name | Focus & Curation | Target Scale | Isolation Mode | NSFW Restrict |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| `akai` | **Akai** | Japanese, Anime, Vocaloid, J-Pop & J-Rock (Romaji/Kanji) | ~280,000 | `lyrics_akai` | ❌ Public Safe |
-| `pine` | **PiNE** | Worldwide Pop, Rock, Hip-Hop, Electronic & Indie hits | ~500,000 | `lyrics_pine` | ❌ Public Safe |
-| `pakai` | **PAKAI** | Underground, raw parodies, explicit & adult content | ~3,000 | `lyrics_pakai` | 🔞 18+ Age Gate |
+Fresh installs start with **zero local nodes**. Administrators provision custom nodes (e.g. `anime`, `kpop`, `indie`, `metal`) with 1-click in the Admin Panel, then import lyrics, approve community submissions, or let MIN-AI learn from the catalog.
 
-Administrators can dynamically provision new custom nodes (e.g. `kpop`, `classical`, `metal`) with 1-click in the Admin Panel without modifying code.
+### Built-in Special Nodes (External Libraries)
+
+| Node ID | Library | Capabilities |
+| :--- | :--- | :--- |
+| `lrclib` | [LRCLIB](https://lrclib.net) | Full-text search + synced LRC / plain lyrics, converted to TTML on read |
+| `lyricsovh` | [lyrics.ovh](https://lyrics.ovh) | Artist–Title lookup (plain lyrics) |
+
+Special nodes are **virtual and read-only**: they appear in `/api/v1/nodes`, global search (ranked after local results), and the public Nodes directory, but have no database table — writes, edits, deletes, and submissions targeting them are rejected with HTTP 400. Disable them globally in **System Settings → Enable External Library Nodes**.
 
 ---
 
@@ -85,7 +95,7 @@ Administrators can dynamically provision new custom nodes (e.g. `kpop`, `classic
 PostgreSQL is a first-class production database engine in Semar:
 - **Partitioned Table Isolation**: Creates `lyrics_<nodeId>` with independent B-Tree indices on `(title, artist, youtube_video_id)`.
 - **JSONB Metadata**: Flexible metadata storage (Romaji, Furigana, ISRC, composer, anime season, BPM) indexed with PostgreSQL **GIN** (`CREATE INDEX ... USING gin (metadata)`).
-- **Multi-Engine Abstraction**: Also supports MySQL/MariaDB (`mysql2`) and local zero-config SQLite (`better-sqlite3`).
+- **Postgres-Only Core**: production runs on managed PostgreSQL (`POSTGRES_URL`); MySQL/MariaDB (`mysql2`) remains supported; zero-config **PGlite** (embedded real Postgres, `USE_PGLITE=1`) covers demos, tests, and single-node deploys. SQLite was removed in v2.2 — it cannot work on serverless filesystems.
 
 ---
 
@@ -98,7 +108,8 @@ PostgreSQL is a first-class production database engine in Semar:
 - **Route-Specific Configuration**: Custom paths (`/v1/anime/search`, `/v1/bridge/resolve`), rate limits, API key requirements.
 - **Context API (`ctx`)**:
   - `ctx.query`, `ctx.params`, `ctx.body`, `ctx.headers`
-  - `ctx.nodes`: Access specific node partitions (`ctx.nodes.searchLyrics('akai', 'LiSA')`)
+  - `ctx.nodes`: Access node partitions (`ctx.nodes.searchLyrics(nodeId, 'LiSA')`, `ctx.nodes.listNodes()`)
+  - `ctx.minai`: MIN-AI engine (`ctx.minai.generate({ seed, lines })`, `ctx.minai.finder(q)`, `ctx.minai.similar(nodeId, id)`) · **v2.2**
   - `ctx.lyrics`: Global lyrics functions (`ctx.lyrics.getByYouTubeId('CwkzK-Fh400')`)
   - `ctx.db`: Direct SQL query execution (`ctx.db.query(...)`)
   - `ctx.cache`: In-memory & DB cache operations (`ctx.cache.get(...)`)
@@ -138,7 +149,7 @@ Semar includes 16 dedicated administration and customization interfaces:
 11. **API Documentation**: Interactive Swagger/OpenAPI style console with copyable cURL snippets.
 12. **Server & Audit Logs**: Centralized real-time audit trail and IP tracking.
 13. **Statistics & Analytics**: Latency curves, node query distribution, cache hit ratios.
-14. **Database Console**: PostgreSQL/MySQL/SQLite connection tester, schema inspector, and safe SQL runner.
+14. **Database Console**: PostgreSQL/MySQL/PGlite connection tester, schema inspector, and safe SQL runner.
 15. **Security & API Keys**: Generate scoped API keys with rate limits and node restrictions.
 16. **System Settings**: Global server configuration, cache TTL, default node, and maintenance mode.
 
@@ -157,14 +168,84 @@ Semar includes 16 dedicated administration and customization interfaces:
 
 ### Core Endpoints
 - `GET /api/v1/lyrics/search?q={query}&limit={limit}` — Multi-node fuzzy lyrics search
+- `GET /api/v1/lyrics/trending?limit={limit}` — Trending tracks by play count (cached 5 min) · **v2.1**
 - `GET /api/v1/lyrics/youtube/:videoId` — Instant YouTube Video ID cache resolver
 - `POST /api/v1/lyrics/youtube/associate` — Map YouTube Video ID to track
+- `POST /api/v1/submissions` — Submit lyrics for moderator review (public, rate-limited) · **v2.1**
 - `GET /api/v1/nodes` — List active nodes and partition metadata
 - `GET /api/v1/nodes/:nodeId/lyrics` — Query specific node partition
 - `POST /api/v1/nodes/:nodeId/lyrics` — Insert lyrics into node table
 - `GET /api/v1/cache/stats` — Real-time memory and persistent cache metrics
 - `POST /api/v1/cache/warmup` — Warm up memory LRU cache
+- `POST /api/v1/cache/purge-expired` — Purge TTL-expired cache rows (admin) · **v2.1**
 - `ALL /api/semapi/run/:path*` — Execute dynamic administrator JavaScript SemAPI endpoints
+- `GET /api/semapi/routes/:id/export` — Download a portable route bundle (admin) · **v2.1**
+- `POST /api/semapi/routes/import` — Import route bundle(s) (admin) · **v2.1**
+- `GET /api/admin/submissions` — Moderation queue (admin) · **v2.1**
+- `POST /api/admin/submissions/:id/approve` — Approve & publish into a node (admin) · **v2.1**
+- `POST /api/admin/submissions/:id/reject` — Reject with reviewer note (admin) · **v2.1**
+- `GET /api/admin/stats/realtime` — Live metrics snapshot + real timeline (admin) · **v2.1**
+- `GET /api/admin/database/backup` — Portable JSON config backup (admin) · **v2.1**
+- `GET /api/metrics` — Prometheus exposition endpoint · **v2.1**
+- `GET /api/v1/lyrics/random` — Random track from the local catalog · **v2.2**
+- `GET /api/minai/status` — MIN-AI model status (trained/tracks/states) · **v2.2**
+- `POST /api/minai/train` — Rebuild the Markov model from local lyrics (admin) · **v2.2**
+- `POST /api/minai/generate` — Generate original lyric lines (`seed`, `lines`, `wordsPerLine`, `artist`) · **v2.2**
+- `GET /api/minai/finder?q={vibe}` — Ranked vibe/keyword search with scores + snippets · **v2.2**
+- `GET /api/minai/similar/:nodeId/:id` — Tracks with similar lyric vocabulary · **v2.2**
+
+---
+
+## ✦ External Library Nodes (v2.2)
+
+Two third-party lyrics databases ship as **special nodes** — no API keys, no setup:
+
+- **Search integration**: global search fans out to providers in parallel and appends their results after local hits (15-min search cache, 6-hour track cache, graceful on provider outage).
+- **Deep links**: every provider track opens at `/lyrics/lrclib/:id` with synced LRC → TTML conversion on read.
+- **Public pages**: `/nodes/lrclib` and `/nodes/lyricsovh` offer live library search UIs.
+- **Guardrails**: reserved IDs (`lrclib`, `lyricsovh`) can't be provisioned as local nodes; all write paths reject specials with HTTP 400; a cached kill-switch (`System Settings → Enable External Library Nodes`) removes them from search within a minute.
+
+## ✦ MIN-AI — AI for Lyrics (v2.2)
+
+**MIN-AI** is a transparent, dependency-free lyric intelligence engine — classic n-gram Markov chains (order ≤ 3, per line), trained on **all plain lyrics across every local node**:
+
+- **AI Studio (`/ai`)**: generate original lines from a seed word and/or artist style, with line/word sliders and one-click copy.
+- **AI Finder**: vibe search (`midnight city lights`) ranked by stopword-filtered vocabulary overlap, with match scores and lyric snippets.
+- **More Like This**: every lyric page shows similar tracks by shared vocabulary.
+- **Honest AI**: deterministic with `rngSeed`, every generated word provably comes from the training corpus, model stats (tracks/states/vocab) are public, and the model auto-trains lazily on first use (admins can retrain from the dashboard).
+- **SemAPI-native**: handlers get `ctx.minai.generate/finder/similar`, and a starter route (`POST /api/semapi/run/v1/minai/generate`) ships in the seed.
+
+## ✦ Community Submissions & Trending (v2.1)
+
+Visitors can contribute lyrics at **`/submit`** — every submission lands in the admin **Submissions** moderation queue (`/admin/submissions`) with a pending badge in the sidebar. Approving publishes the track into the target node partition (LRC → TTML auto-conversion included); rejecting keeps an audit-trailed reviewer note. Anti-spam is built in: 10 req/min per IP plus a 10/day rolling cap.
+
+The home page shows a **Trending Now** strip powered by `GET /api/v1/lyrics/trending`, ranked by real play counts.
+
+---
+
+## ✦ Real Metrics & Prometheus (v2.1)
+
+The dashboard timeline is now **100% real traffic** — every request is recorded by a zero-DB-write in-memory engine (hourly buckets, per-route counters, latency), flushed to `system_metrics` every 5 minutes and merged with persisted history after restarts. Scrape `GET /api/metrics` with Prometheus:
+
+```yaml
+scrape_configs:
+  - job_name: semar
+    static_configs:
+      - targets: ['semar:3000']
+```
+
+A background **janitor** runs on boot and every 6 hours: purges TTL-expired YouTube cache rows and prunes `semapi_logs` (30d), `audit_logs` (90d) and `system_metrics` (30d). Disable with `DISABLE_JANITOR=1`.
+
+---
+
+## ✦ API Key Policies (v2.1)
+
+API keys are now enforced, not just issued:
+
+- **System Settings → Require API Key for Search**: when enabled, all public lyrics reads need a valid key (`X-API-Key` / `X-SemAPI-Key` header or `?apiKey=`).
+- **Per-key rate limits**: each key's `rate_limit_rpm` is enforced independently (HTTP 429 on breach).
+- **Node scoping**: keys with `node_restrictions` only see those partitions; `read` permission is required for lyrics reads.
+- YouTube cache rows accept an optional `ttlDays` for automatic janitor eviction.
 
 ---
 
@@ -181,6 +262,15 @@ Semar is optimized for Vercel Serverless Functions and Edge hosting:
 3. Deploy! Vercel automatically routes `/api/*` to `api/index.ts` and serves the compiled Vue 3 frontend from `dist/`.
 
 ### Self-Hosted (Docker & Node.js)
+
+**Docker (recommended)** — ships a multi-stage image with the Vue client pre-built:
+
+```bash
+# Bundled app + PostgreSQL 16 (production-ready, one command)
+docker compose up -d --build
+```
+
+**Plain Node.js:**
 
 ```bash
 # 1. Clone repository
@@ -204,9 +294,9 @@ When starting Semar for the first time, navigate to:
 http://localhost:3000/setup
 ```
 The wizard guides you through:
-1. Connecting PostgreSQL, MySQL, or SQLite
+1. Connecting PostgreSQL, MySQL, or embedded PGlite
 2. Creating the master superadmin credentials
-3. Initializing the Akai, PiNE, and PAKAI node partitions
+3. Understanding the node model (you create nodes after setup; LRCLIB + lyrics.ovh are built in)
 4. Customizing branding and site identity
 
 ---
@@ -219,8 +309,10 @@ The wizard guides you through:
 | `POSTGRES_URL` | PostgreSQL connection URL | `postgres://...` |
 | `DATABASE_URL` | Fallback database URL | - |
 | `MYSQL_URL` | MySQL / MariaDB connection URL | - |
-| `SQLITE_PATH` | Path to embedded SQLite database | `./data/semar.db` |
+| `USE_PGLITE` | Use embedded in-process Postgres instead of a server | unset (off) |
+| `PGLITE_DIR` | PGlite data directory (blank = in-memory/ephemeral) | unset |
 | `JWT_SECRET` | Secret key for JWT admin tokens | `semar_secret` |
+| `DISABLE_JANITOR` | Disable the TTL/log janitor scheduler | unset (enabled) |
 | `NODE_ENV` | Environment mode | `production` |
 
 ---

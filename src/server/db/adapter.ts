@@ -1,4 +1,4 @@
-export type DatabaseType = 'postgres' | 'mysql' | 'sqlite';
+export type DatabaseType = 'postgres' | 'mysql' | 'pglite';
 
 export interface TableInfo {
   name: string;

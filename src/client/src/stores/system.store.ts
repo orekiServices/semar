@@ -14,7 +14,7 @@ export const useSystemStore = defineStore('system', () => {
     tagline: 'Self-Hosted Synchronized Lyrics Database & SemAPI Engine',
     description: 'Tailored lyrics database with PostgreSQL-native multi-node isolation, YouTube Video ID caching, and dynamic JavaScript SemAPI endpoints.',
     heroTitle: 'Find & Synchronize Every Lyric',
-    heroSubtitle: 'Explore over 780,000 synchronized tracks across isolated high-speed nodes with millisecond LRC accuracy.',
+    heroSubtitle: 'Search your self-hosted lyric nodes, community libraries, and external providers — with millisecond LRC accuracy.',
     primaryColor: '#8b5cf6',
     secondaryColor: '#ec4899',
     footerText: 'Powered by Semar Engine ⁠♡ Written in TypeScript with Express & Vue 3',

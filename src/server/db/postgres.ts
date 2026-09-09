@@ -11,6 +11,17 @@ export interface PostgresConfig {
   ssl?: boolean | object;
 }
 
+// Tables whose primary key is NOT an `id` column — appending `RETURNING id`
+// to INSERTs against them would fail with 42703 (undefined column).
+const NO_ID_TABLES = new Set(['nodes', 'admin_users', 'system_config', 'youtube_cache']);
+
+function wantsReturningId(sql: string): boolean {
+  if (!/^\s*INSERT\s+INTO/i.test(sql) || /RETURNING/i.test(sql)) return false;
+  const m = sql.match(/^\s*INSERT\s+INTO\s+["`]?([A-Za-z0-9_]+)/i);
+  if (!m) return false;
+  return !NO_ID_TABLES.has(m[1].toLowerCase());
+}
+
 export class PostgresAdapter implements DatabaseAdapter {
   public type: 'postgres' = 'postgres';
   private pool: pg.Pool;
@@ -55,8 +66,7 @@ export class PostgresAdapter implements DatabaseAdapter {
 
   async execute(sql: string, params: any[] = []): Promise<ExecuteResult> {
     let convertedSql = this.convertPlaceholders(sql);
-    const isInsert = /^\s*INSERT\s+INTO/i.test(sql);
-    if (isInsert && !/RETURNING/i.test(sql)) {
+    if (wantsReturningId(sql)) {
       convertedSql += ' RETURNING id';
     }
 
@@ -89,7 +99,7 @@ export class PostgresAdapter implements DatabaseAdapter {
         },
         execute: async (sql: string, params: any[] = []) => {
           let cSql = this.convertPlaceholders(sql);
-          if (/^\s*INSERT\s+INTO/i.test(sql) && !/RETURNING/i.test(sql)) {
+          if (wantsReturningId(sql)) {
             cSql += ' RETURNING id';
           }
           const res = await client.query(cSql, params);

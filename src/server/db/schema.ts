@@ -1,9 +1,8 @@
 import type { DatabaseAdapter } from './adapter.js';
 
 export async function runMigrations(db: DatabaseAdapter): Promise<void> {
-  const isPg = db.type === 'postgres';
+  const isPg = db.type === 'postgres' || db.type === 'pglite';
   const isMysql = db.type === 'mysql';
-  const isSqlite = db.type === 'sqlite';
 
   // Helper type mappings
   const pkAuto = isPg ? 'SERIAL PRIMARY KEY' : isMysql ? 'INT AUTO_INCREMENT PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
@@ -154,6 +153,34 @@ export async function runMigrations(db: DatabaseAdapter): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_semapi_path ON semapi_routes (path, method);
       CREATE INDEX IF NOT EXISTS idx_youtube_cache_accessed ON youtube_cache (last_accessed_at);
       CREATE INDEX IF NOT EXISTS idx_metrics_cat ON system_metrics (category, timestamp);
+    `);
+
+    // v2.1: community lyrics submissions moderation queue
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS lyrics_submissions (
+        id SERIAL PRIMARY KEY,
+        node_id VARCHAR(64) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        artist VARCHAR(255) NOT NULL,
+        album VARCHAR(255),
+        youtube_video_id VARCHAR(64),
+        duration INTEGER DEFAULT 0,
+        plain_lyrics TEXT,
+        synced_lyrics TEXT,
+        ttml_lyrics TEXT,
+        metadata JSONB DEFAULT '{}'::jsonb,
+        submitter_name VARCHAR(128) DEFAULT 'Anonymous',
+        submitter_ip VARCHAR(64),
+        status VARCHAR(16) DEFAULT 'pending',
+        review_note TEXT,
+        reviewed_by VARCHAR(128),
+        reviewed_at TIMESTAMPTZ,
+        song_id INTEGER,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_submissions_status ON lyrics_submissions (status, created_at);
     `);
   } else if (isMysql) {
     await db.query(`
@@ -314,152 +341,35 @@ export async function runMigrations(db: DatabaseAdapter): Promise<void> {
         \`metadata\` JSON
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
-  } else {
-    // SQLite
+    // v2.1: community lyrics submissions moderation queue
     await db.query(`
-      CREATE TABLE IF NOT EXISTS system_config (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL,
-        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS admin_users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        role TEXT DEFAULT 'superadmin',
-        api_key TEXT,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        last_login_at TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS nodes (
-        node_id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        description TEXT,
-        table_name TEXT NOT NULL,
-        storage_mode TEXT DEFAULT 'isolated_table',
-        is_nsfw INTEGER DEFAULT 0,
-        status TEXT DEFAULT 'active',
-        rate_limit INTEGER DEFAULT 120,
-        total_records_approx INTEGER DEFAULT 0,
-        about_config TEXT DEFAULT '{}',
-        api_config TEXT DEFAULT '{}',
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS semapi_routes (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        path TEXT NOT NULL,
-        method TEXT NOT NULL,
-        enabled INTEGER DEFAULT 1,
-        auth_required INTEGER DEFAULT 0,
-        api_key_header TEXT DEFAULT 'X-SemAPI-Key',
-        rate_limit_rpm INTEGER DEFAULT 60,
-        permissions TEXT DEFAULT '[]',
-        request_schema TEXT DEFAULT '{}',
-        response_schema TEXT DEFAULT '{}',
-        code TEXT NOT NULL,
-        default_response TEXT DEFAULT '{"status": "ok"}',
-        description TEXT,
-        tags TEXT DEFAULT '[]',
-        total_calls INTEGER DEFAULT 0,
-        last_called_at TEXT,
-        last_status INTEGER,
-        error_count INTEGER DEFAULT 0,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS semapi_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        route_id TEXT,
-        method TEXT,
-        path TEXT,
-        status_code INTEGER,
-        latency_ms INTEGER,
-        ip TEXT,
-        request_headers TEXT,
-        request_body TEXT,
-        response_preview TEXT,
-        log_messages TEXT,
-        error_message TEXT,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS youtube_cache (
-        youtube_video_id TEXT PRIMARY KEY,
-        song_id INTEGER,
-        node_id TEXT,
-        title TEXT,
-        artist TEXT,
-        album TEXT,
-        duration INTEGER,
-        plain_lyrics TEXT,
-        synced_lyrics TEXT,
-        ttml_lyrics TEXT,
-        metadata TEXT DEFAULT '{}',
-        hit_count INTEGER DEFAULT 1,
-        last_accessed_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        expires_at TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS custom_pages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        slug TEXT UNIQUE NOT NULL,
-        title TEXT NOT NULL,
-        content TEXT NOT NULL,
-        is_published INTEGER DEFAULT 1,
-        require_auth INTEGER DEFAULT 0,
-        show_in_navbar INTEGER DEFAULT 0,
-        meta_description TEXT,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS api_keys (
-        id TEXT PRIMARY KEY,
-        key_hash TEXT NOT NULL,
-        key_prefix TEXT NOT NULL,
-        name TEXT NOT NULL,
-        permissions TEXT DEFAULT '["read"]',
-        node_restrictions TEXT DEFAULT '[]',
-        rate_limit_rpm INTEGER DEFAULT 120,
-        total_requests INTEGER DEFAULT 0,
-        is_active INTEGER DEFAULT 1,
-        last_used_at TEXT,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        expires_at TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS audit_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        event_type TEXT NOT NULL,
-        actor TEXT DEFAULT 'system',
-        details TEXT DEFAULT '{}',
-        ip TEXT,
-        user_agent TEXT,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS system_metrics (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
-        category TEXT NOT NULL,
-        metric_name TEXT NOT NULL,
-        value REAL NOT NULL,
-        metadata TEXT DEFAULT '{}'
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_semapi_path ON semapi_routes (path, method);
-      CREATE INDEX IF NOT EXISTS idx_youtube_cache_accessed ON youtube_cache (last_accessed_at);
-      CREATE INDEX IF NOT EXISTS idx_metrics_cat ON system_metrics (category, timestamp);
+      CREATE TABLE IF NOT EXISTS \`lyrics_submissions\` (
+        \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+        \`node_id\` VARCHAR(64) NOT NULL,
+        \`title\` VARCHAR(255) NOT NULL,
+        \`artist\` VARCHAR(255) NOT NULL,
+        \`album\` VARCHAR(255),
+        \`youtube_video_id\` VARCHAR(64),
+        \`duration\` INT DEFAULT 0,
+        \`plain_lyrics\` MEDIUMTEXT,
+        \`synced_lyrics\` MEDIUMTEXT,
+        \`ttml_lyrics\` MEDIUMTEXT,
+        \`metadata\` JSON,
+        \`submitter_name\` VARCHAR(128) DEFAULT 'Anonymous',
+        \`submitter_ip\` VARCHAR(64),
+        \`status\` VARCHAR(16) DEFAULT 'pending',
+        \`review_note\` TEXT,
+        \`reviewed_by\` VARCHAR(128),
+        \`reviewed_at\` DATETIME,
+        \`song_id\` INT,
+        \`created_at\` DATETIME DEFAULT CURRENT_TIMESTAMP,
+        \`updated_at\` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX \`idx_submissions_status\` (\`status\`, \`created_at\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
+  } else {
+    throw new Error(`Unsupported database type: ${db.type}`);
   }
-
   // Safe incremental column migration: ensure ttml_lyrics column exists on youtube_cache & node tables
   try {
     if (isPg) {
@@ -467,11 +377,6 @@ export async function runMigrations(db: DatabaseAdapter): Promise<void> {
     } else if (isMysql) {
       try {
         await db.query(`ALTER TABLE \`youtube_cache\` ADD COLUMN \`ttml_lyrics\` MEDIUMTEXT;`);
-      } catch {}
-    } else {
-      // SQLite
-      try {
-        await db.query(`ALTER TABLE youtube_cache ADD COLUMN ttml_lyrics TEXT;`);
       } catch {}
     }
   } catch {}

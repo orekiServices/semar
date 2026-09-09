@@ -10,6 +10,8 @@ import PublicNodeDetailView from '../views/PublicNodeDetailView.vue';
 import PublicAboutView from '../views/PublicAboutView.vue';
 import PublicDocsView from '../views/PublicDocsView.vue';
 import CustomPageView from '../views/CustomPageView.vue';
+import SubmitView from '../views/SubmitView.vue';
+import AiView from '../views/AiView.vue';
 
 // Admin Views
 import DashboardView from '../views/admin/DashboardView.vue';
@@ -28,6 +30,7 @@ import StatisticsView from '../views/admin/StatisticsView.vue';
 import DatabaseView from '../views/admin/DatabaseView.vue';
 import SecurityView from '../views/admin/SecurityView.vue';
 import SettingsView from '../views/admin/SettingsView.vue';
+import SubmissionsView from '../views/admin/SubmissionsView.vue';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -40,6 +43,8 @@ const router = createRouter({
     { path: '/about', name: 'public-about', component: PublicAboutView },
     { path: '/docs', name: 'public-docs', component: PublicDocsView },
     { path: '/p/:slug', name: 'custom-page', component: CustomPageView },
+    { path: '/submit', name: 'submit', component: SubmitView },
+    { path: '/ai', name: 'ai', component: AiView },
 
     // Admin Suite
     { path: '/admin', redirect: '/admin/dashboard' },
@@ -59,6 +64,7 @@ const router = createRouter({
     { path: '/admin/database', name: 'admin-database', component: DatabaseView, meta: { requiresAuth: true } },
     { path: '/admin/security', name: 'admin-security', component: SecurityView, meta: { requiresAuth: true } },
     { path: '/admin/settings', name: 'admin-settings', component: SettingsView, meta: { requiresAuth: true } },
+    { path: '/admin/submissions', name: 'admin-submissions', component: SubmissionsView, meta: { requiresAuth: true } },
   ],
   scrollBehavior() {
     return { top: 0 };

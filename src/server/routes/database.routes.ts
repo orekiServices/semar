@@ -42,11 +42,13 @@ router.post('/test', requireAdminAuth, async (req, res, next) => {
       const adapter = new MysqlAdapter(connectionString || config);
       testRes = await adapter.testConnection();
       await adapter.close();
-    } else {
-      const { SqliteAdapter } = await import('../db/sqlite.js');
-      const adapter = new SqliteAdapter(connectionString || './data/semar.db');
+    } else if (type === 'pglite') {
+      const { PgliteAdapter } = await import('../db/pglite.js');
+      const adapter = new PgliteAdapter(connectionString || undefined);
       testRes = await adapter.testConnection();
       await adapter.close();
+    } else {
+      testRes = { success: false, type, error: `Unsupported database type: ${type}` };
     }
 
     res.json(testRes);
@@ -72,6 +74,51 @@ router.post('/switch', requireAdminAuth, async (req, res, next) => {
 
     await logsService.recordAudit('DB_SWITCHED', (req as any).user?.username, { targetType: type }, req.ip);
     res.json({ status: 'success', message: `Switched database engine to ${type}`, connection: switchRes });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// v2.1 — Download a portable JSON backup of core configuration tables.
+// Lyrics partitions are exported per-node via /api/v1/lyrics/:nodeId/export;
+// this backup covers nodes registry, settings, SemAPI routes, pages, and
+// API key metadata (hashes excluded for safety).
+router.get('/backup', requireAdminAuth, async (req, res, next) => {
+  try {
+    const db = getDb();
+    const parseJson = (val: any, fallback: any = {}) => {
+      if (val === null || val === undefined) return fallback;
+      if (typeof val !== 'string') return val;
+      try { return JSON.parse(val); } catch { return val; }
+    };
+
+    const nodes = await db.query<any>('SELECT * FROM nodes ORDER BY node_id ASC');
+    const configs = await db.query<any>('SELECT * FROM system_config');
+    const semapiRoutes = await db.query<any>('SELECT * FROM semapi_routes ORDER BY created_at ASC');
+    const pages = await db.query<any>('SELECT * FROM custom_pages ORDER BY slug ASC');
+    const apiKeys = await db.query<any>(
+      'SELECT id, key_prefix, name, permissions, node_restrictions, rate_limit_rpm, total_requests, is_active, last_used_at, created_at, expires_at FROM api_keys ORDER BY created_at ASC'
+    );
+    const submissions = await db.queryOne<{ count: number }>('SELECT COUNT(*) as count FROM lyrics_submissions').catch(() => ({ count: 0 }));
+    const ytCache = await db.queryOne<{ count: number }>('SELECT COUNT(*) as count FROM youtube_cache');
+
+    res.setHeader('Content-Disposition', `attachment; filename=semar-backup-${new Date().toISOString().slice(0, 10)}.json`);
+    res.json({
+      semarVersion: '2.2.0',
+      engine: db.type,
+      exportedAt: new Date().toISOString(),
+      tables: {
+        nodes: nodes.map((n: any) => ({ ...n, about_config: parseJson(n.about_config), api_config: parseJson(n.api_config) })),
+        system_config: configs.map((c: any) => ({ ...c, value: parseJson(c.value) })),
+        semapi_routes: semapiRoutes,
+        custom_pages: pages,
+        api_keys: apiKeys,
+      },
+      stats: {
+        lyricsSubmissions: submissions?.count || 0,
+        youtubeCacheEntries: ytCache?.count || 0,
+      },
+    });
   } catch (err) {
     next(err);
   }

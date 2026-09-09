@@ -103,7 +103,7 @@ export class CacheService {
     );
   }
 
-  async saveYouTubeCache(item: Partial<YouTubeCacheItem>): Promise<YouTubeCacheItem> {
+  async saveYouTubeCache(item: Partial<YouTubeCacheItem> & { ttlDays?: number }): Promise<YouTubeCacheItem> {
     if (!item.youtube_video_id) throw new Error('youtube_video_id is required');
     const db = getDb();
 
@@ -113,11 +113,18 @@ export class CacheService {
     );
 
     const metaStr = typeof item.metadata === 'object' ? JSON.stringify(item.metadata) : item.metadata || '{}';
+    // v2.1 — optional TTL: expires_at timestamp for janitor-based eviction.
+    // Stored as 'YYYY-MM-DD HH:MM:SS' (UTC) so lexical comparison works on
+    // UTC lexical ordering, parses natively on Postgres/MySQL/PGlite.
+    const toDbTimestamp = (d: Date) => d.toISOString().slice(0, 19).replace('T', ' ');
+    const expiresAt = item.ttlDays && item.ttlDays > 0
+      ? toDbTimestamp(new Date(Date.now() + item.ttlDays * 24 * 3600_000))
+      : (item.expires_at || null);
 
     if (existing) {
       await db.execute(
-        `UPDATE youtube_cache 
-         SET song_id = ?, node_id = ?, title = ?, artist = ?, album = ?, duration = ?, plain_lyrics = ?, synced_lyrics = ?, ttml_lyrics = ?, metadata = ?, last_accessed_at = CURRENT_TIMESTAMP
+        `UPDATE youtube_cache
+         SET song_id = ?, node_id = ?, title = ?, artist = ?, album = ?, duration = ?, plain_lyrics = ?, synced_lyrics = ?, ttml_lyrics = ?, metadata = ?, expires_at = ?, last_accessed_at = CURRENT_TIMESTAMP
          WHERE youtube_video_id = ?`,
         [
           item.song_id || null,
@@ -130,13 +137,14 @@ export class CacheService {
           item.synced_lyrics || '',
           item.ttml_lyrics || '',
           metaStr,
+          expiresAt,
           item.youtube_video_id,
         ]
       );
     } else {
       await db.execute(
-        `INSERT INTO youtube_cache (youtube_video_id, song_id, node_id, title, artist, album, duration, plain_lyrics, synced_lyrics, ttml_lyrics, metadata, hit_count)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+        `INSERT INTO youtube_cache (youtube_video_id, song_id, node_id, title, artist, album, duration, plain_lyrics, synced_lyrics, ttml_lyrics, metadata, expires_at, hit_count)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
         [
           item.youtube_video_id,
           item.song_id || null,
@@ -149,6 +157,7 @@ export class CacheService {
           item.synced_lyrics || '',
           item.ttml_lyrics || '',
           metaStr,
+          expiresAt,
         ]
       );
     }
@@ -174,7 +183,7 @@ export class CacheService {
       `SELECT COUNT(*) as count FROM youtube_cache ${whereClause}`,
       params
     );
-    const total = countRow?.count || 0;
+    const total = Number(countRow?.count) || 0;
 
     const rows = await db.query<any>(
       `SELECT * FROM youtube_cache ${whereClause} ORDER BY last_accessed_at DESC LIMIT ? OFFSET ?`,
@@ -188,6 +197,24 @@ export class CacheService {
     }));
 
     return { items, total };
+  }
+
+  /**
+   * v2.1 — Delete only rows whose expires_at has passed (TTL janitor).
+   * Also evicts them from the in-memory LRU.
+   */
+  async purgeExpired(): Promise<{ purged: number }> {
+    const db = getDb();
+    const expired = await db.query<{ youtube_video_id: string }>(
+      'SELECT youtube_video_id FROM youtube_cache WHERE expires_at IS NOT NULL AND expires_at < CURRENT_TIMESTAMP'
+    );
+    let purged = 0;
+    for (const row of expired) {
+      this.delete(`yt:${row.youtube_video_id}`);
+      const res = await db.execute('DELETE FROM youtube_cache WHERE youtube_video_id = ?', [row.youtube_video_id]);
+      purged += res.rowsAffected || 0;
+    }
+    return { purged };
   }
 
   async purgeYouTubeCache(videoId?: string): Promise<{ purged: number }> {
