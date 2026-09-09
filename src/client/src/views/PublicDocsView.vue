@@ -140,7 +140,7 @@ const coreEndpoints = [
     path: '/api/v1/lyrics/:nodeId/:id/ttml',
     summary: 'Apple Music TTML Syllable Lyrics Export',
     description: 'Retrieves Apple Music compliant Timed Text Markup Language (TTML XML) with syllable/word timestamps and iTunes metadata schema.',
-    curl: 'curl -X GET "http://localhost:3000/api/v1/lyrics/akai/1/ttml"',
+    curl: 'curl -X GET "http://localhost:3000/api/v1/lyrics/anime/1/ttml"',
   },
   {
     method: 'GET',
@@ -153,7 +153,7 @@ const coreEndpoints = [
     method: 'GET',
     path: '/api/v1/nodes',
     summary: 'List All Semar Storage Nodes',
-    description: 'Returns all isolated node partitions (Akai, PiNE, PAKAI) with record volumes and rate limits.',
+    description: 'Returns all nodes — local partitions plus read-only external libraries (lrclib, lyricsovh).',
     curl: 'curl -X GET "http://localhost:3000/api/v1/nodes"',
   },
   {
@@ -161,7 +161,7 @@ const coreEndpoints = [
     path: '/api/v1/nodes/:nodeId/lyrics',
     summary: 'Browse Lyrics in Specific Node Partition',
     description: 'Queries the isolated lyrics table belonging strictly to the requested nodeId.',
-    curl: 'curl -X GET "http://localhost:3000/api/v1/nodes/akai/lyrics?limit=20"',
+    curl: 'curl -X GET "http://localhost:3000/api/v1/nodes/anime/lyrics?limit=20"',
   },
   {
     method: 'GET',
@@ -169,6 +169,34 @@ const coreEndpoints = [
     summary: 'Cache Hit & Memory Metrics',
     description: 'Returns real-time memory LRU cache and persistent YouTube cache statistics.',
     curl: 'curl -X GET "http://localhost:3000/api/v1/cache/stats"',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/lyrics/random',
+    summary: 'Random Track (v2.2)',
+    description: 'Returns one random track from the local catalog — powers Surprise Me playback.',
+    curl: 'curl -X GET "http://localhost:3000/api/v1/lyrics/random"',
+  },
+  {
+    method: 'POST',
+    path: '/api/minai/generate',
+    summary: 'MIN-AI Lyric Generator (v2.2)',
+    description: 'Generates original lyric lines from a Markov model trained on all local plain lyrics. Optional seed word, line count, and artist style.',
+    curl: 'curl -X POST "http://localhost:3000/api/minai/generate" -H "Content-Type: application/json" -d \'{"seed": "midnight", "lines": 4}\'',
+  },
+  {
+    method: 'GET',
+    path: '/api/minai/finder?q={vibe}',
+    summary: 'AI Finder (v2.2)',
+    description: 'Ranks catalog tracks by lyric-vocabulary overlap with a vibe, mood, or keyword query. Returns match scores and snippets.',
+    curl: 'curl -X GET "http://localhost:3000/api/minai/finder?q=midnight%20city%20lights"',
+  },
+  {
+    method: 'GET',
+    path: '/api/minai/similar/:nodeId/:id',
+    summary: 'Similar Tracks (v2.2)',
+    description: 'Finds tracks with the most similar lyric vocabulary to a given song. Powers the More Like This rail.',
+    curl: 'curl -X GET "http://localhost:3000/api/minai/similar/anime/1"',
   },
 ];
 

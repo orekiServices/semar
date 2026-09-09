@@ -12,7 +12,7 @@
               {{ systemStore.branding.siteName || '⁠♡ Semar' }}
             </h1>
             <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 border border-violet-500/30 uppercase tracking-wide">
-              v2.1
+              v2.2
             </span>
           </div>
           <p class="text-[11px] text-slate-400 -mt-0.5 hidden sm:block">Self-Hosted Lyrics & SemAPI Engine</p>
@@ -64,6 +64,15 @@
         >
           <Upload class="w-3.5 h-3.5" />
           Submit
+        </router-link>
+
+        <router-link
+          to="/ai"
+          class="px-3.5 py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1.5"
+          :class="$route.name === 'ai' ? 'bg-violet-600 text-white shadow-md shadow-violet-600/30' : 'text-slate-300 hover:text-white hover:bg-slate-800/60'"
+        >
+          <Sparkles class="w-3.5 h-3.5" />
+          AI Studio
         </router-link>
 
         <router-link
@@ -158,6 +167,7 @@ import {
   Lock,
   Wrench,
   Upload,
+  Sparkles,
 } from 'lucide-vue-next';
 
 const route = useRoute();

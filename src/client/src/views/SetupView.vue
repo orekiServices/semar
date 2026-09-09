@@ -72,25 +72,25 @@
 
           <label
             class="glass-card p-4 rounded-2xl border cursor-pointer transition-all flex flex-col items-center text-center space-y-2"
-            :class="dbType === 'sqlite' ? 'border-violet-500 bg-violet-950/30 shadow-lg shadow-violet-950/50' : 'border-slate-800 hover:border-slate-700'"
+            :class="dbType === 'pglite' ? 'border-violet-500 bg-violet-950/30 shadow-lg shadow-violet-950/50' : 'border-slate-800 hover:border-slate-700'"
           >
-            <input type="radio" v-model="dbType" value="sqlite" class="sr-only" />
-            <div class="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">SQL</div>
-            <span class="font-bold text-sm text-white">SQLite (Embedded)</span>
-            <span class="text-[11px] text-slate-400 leading-tight">Zero configuration, runs locally in ./data/semar.db</span>
+            <input type="radio" v-model="dbType" value="pglite" class="sr-only" />
+            <div class="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">PG</div>
+            <span class="font-bold text-sm text-white">PGlite (Embedded)</span>
+            <span class="text-[11px] text-slate-400 leading-tight">Zero-config embedded Postgres. Ideal for demos & single-node deploys.</span>
           </label>
         </div>
 
         <!-- Connection string input -->
         <div class="space-y-2">
           <label class="block text-xs font-semibold text-slate-300">
-            {{ dbType === 'sqlite' ? 'Database File Path' : 'Connection String (URL)' }}
+            {{ dbType === 'pglite' ? 'Data Directory (optional — blank = in-memory)' : 'Connection String (URL)' }}
           </label>
           <input
             v-model="dbConnectionString"
             type="text"
             class="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono text-xs focus:outline-none focus:border-violet-500"
-            :placeholder="dbType === 'postgres' ? 'postgres://postgres:password@localhost:5432/semar' : dbType === 'mysql' ? 'mysql://root:password@localhost:3306/semar' : './data/semar.db'"
+            :placeholder="dbType === 'postgres' ? 'postgres://postgres:password@localhost:5432/semar' : dbType === 'mysql' ? 'mysql://root:password@localhost:3306/semar' : '(optional) ./data/pglite'"
           />
         </div>
 
@@ -155,19 +155,19 @@
         <div class="border-b border-slate-800 pb-3">
           <h3 class="text-lg font-bold text-white flex items-center gap-2">
             <Layers class="w-5 h-5 text-cyan-400" />
-            Step 3: Multi-Node Partition Architecture
+            Step 3: Nodes & External Libraries
           </h3>
-          <p class="text-xs text-slate-400 mt-1">Review the default isolated database partitions configured for your installation.</p>
+          <p class="text-xs text-slate-400 mt-1">Semar starts empty — you create nodes after setup. Two read-only external libraries are always available.</p>
         </div>
 
         <div class="space-y-3">
           <div class="glass-card p-4 rounded-2xl border border-slate-800 flex items-center justify-between">
             <div class="space-y-1">
               <div class="flex items-center gap-2">
-                <h4 class="font-bold text-sm text-white">Akai Node (Eastern & Anime)</h4>
-                <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-violet-500/20 text-violet-300">~280k scale</span>
+                <h4 class="font-bold text-sm text-white">Your own nodes</h4>
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-violet-500/20 text-violet-300">created by you</span>
               </div>
-              <p class="text-xs text-slate-400">Japanese, Vocaloid, J-Pop/Rock with Romaji & Kanji LRC standard.</p>
+              <p class="text-xs text-slate-400">Provision isolated partitions after setup (e.g. anime, kpop, indie) and import or submit lyrics into each.</p>
             </div>
             <Check class="w-5 h-5 text-emerald-400" />
           </div>
@@ -175,21 +175,10 @@
           <div class="glass-card p-4 rounded-2xl border border-slate-800 flex items-center justify-between">
             <div class="space-y-1">
               <div class="flex items-center gap-2">
-                <h4 class="font-bold text-sm text-white">PiNE Node (Global Catalog)</h4>
-                <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-violet-500/20 text-violet-300">~500k scale</span>
+                <h4 class="font-bold text-sm text-white">LRCLIB · lyrics.ovh</h4>
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300">external · read-only</span>
               </div>
-              <p class="text-xs text-slate-400">Pop, Rock, Hip-Hop, Electronic with word-by-word timestamps.</p>
-            </div>
-            <Check class="w-5 h-5 text-emerald-400" />
-          </div>
-
-          <div class="glass-card p-4 rounded-2xl border border-slate-800 flex items-center justify-between">
-            <div class="space-y-1">
-              <div class="flex items-center gap-2">
-                <h4 class="font-bold text-sm text-white">PAKAI Node (Mature/NSFW Restricted)</h4>
-                <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300">18+ Isolated (~3k)</span>
-              </div>
-              <p class="text-xs text-slate-400">Strictly isolated table for underground explicit tracks with age-gate.</p>
+              <p class="text-xs text-slate-400">Built-in special nodes that search third-party lyrics libraries live. Disable anytime in System Settings.</p>
             </div>
             <Check class="w-5 h-5 text-emerald-400" />
           </div>
@@ -299,8 +288,8 @@ const steps = ['Database', 'Admin User', 'Nodes', 'Branding', 'Launch'];
 const currentStep = ref<number>(1);
 
 // Step 1: DB
-const dbType = ref<'postgres' | 'mysql' | 'sqlite'>('sqlite');
-const dbConnectionString = ref<string>('./data/semar.db');
+const dbType = ref<'postgres' | 'mysql' | 'pglite'>('postgres');
+const dbConnectionString = ref<string>('');
 const testingDb = ref<boolean>(false);
 const testResult = ref<any>(null);
 

@@ -1,6 +1,7 @@
 import { getDb } from '../db/index.js';
 import { lyricsService } from './lyrics.service.js';
 import { nodeService } from './node.service.js';
+import { isSpecialNode } from './providers/index.js';
 
 export type SubmissionStatus = 'pending' | 'approved' | 'rejected';
 
@@ -69,14 +70,16 @@ export class SubmissionService {
       throw Object.assign(new Error('At least one lyrics payload (plain_lyrics, synced_lyrics or ttml_lyrics) is required'), { statusCode: 400 });
     }
 
+    if (isSpecialNode(nodeId)) {
+      throw Object.assign(new Error(`Cannot submit to special external node "${nodeId}"`), { statusCode: 400 });
+    }
     const node = await nodeService.getNode(nodeId);
     if (!node) throw Object.assign(new Error(`Node "${nodeId}" does not exist`), { statusCode: 404 });
 
     const db = getDb();
     const ip = data.submitter_ip || 'unknown';
 
-    // Spam guard: rolling 24h per-IP cap (portable across pg/mysql/sqlite).
-    // Space-separated UTC keeps lexical comparison correct on SQLite TEXT.
+    // Spam guard: rolling 24h per-IP cap (space-separated UTC for lexical comparison).
     const oneDayAgo = new Date(Date.now() - 24 * 3600_000).toISOString().slice(0, 19).replace('T', ' ');
     const recent = await db.queryOne<{ count: number }>(
       'SELECT COUNT(*) as count FROM lyrics_submissions WHERE submitter_ip = ? AND created_at >= ?',
@@ -143,7 +146,7 @@ export class SubmissionService {
       `SELECT * FROM lyrics_submissions ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
       [...params, limit, offset]
     );
-    return { items: rows.map((r) => this.formatRow(r)), total: countRow?.count || 0 };
+    return { items: rows.map((r) => this.formatRow(r)), total: Number(countRow?.count) || 0 };
   }
 
   async countByStatus(): Promise<{ pending: number; approved: number; rejected: number; total: number }> {
@@ -169,6 +172,9 @@ export class SubmissionService {
     if (submission.status === 'approved') throw Object.assign(new Error('Submission is already approved'), { statusCode: 400 });
 
     const nodeId = (overrides.node_id || submission.node_id).toLowerCase().replace(/[^a-z0-9_]/g, '');
+    if (isSpecialNode(nodeId)) {
+      throw Object.assign(new Error(`Cannot publish to special external node "${nodeId}"`), { statusCode: 400 });
+    }
     const node = await nodeService.getNode(nodeId);
     if (!node) throw Object.assign(new Error(`Target node "${nodeId}" does not exist`), { statusCode: 404 });
 

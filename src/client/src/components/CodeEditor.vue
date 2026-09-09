@@ -17,11 +17,12 @@
           class="text-xs bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1 text-slate-300 focus:outline-none focus:border-violet-500"
         >
           <option value="">⚡ Load Code Template...</option>
-          <option value="nodeQuery">Query Node Partition (e.g. Akai)</option>
+          <option value="nodeQuery">Query a Node Partition</option>
           <option value="ytBridge">YouTube Cache Resolver</option>
           <option value="searchGlobal">Global Multi-Node Search</option>
           <option value="webhookIngest">Curator Webhook Ingest</option>
           <option value="customTransform">JSON Transformation & Filter</option>
+          <option value="minaiGenerate">MIN-AI Lyric Generator</option>
         </select>
 
         <button
@@ -55,7 +56,7 @@
 
     <!-- Footer helper -->
     <div class="px-4 py-1.5 bg-slate-900/80 border-t border-slate-800 text-[11px] font-mono text-slate-400 flex items-center justify-between">
-      <span>Available APIs: ctx.params, ctx.query, ctx.body, ctx.db, ctx.nodes, ctx.lyrics, ctx.cache, ctx.log()</span>
+      <span>Available APIs: ctx.params, ctx.query, ctx.body, ctx.db, ctx.nodes, ctx.lyrics, ctx.minai, ctx.cache, ctx.log()</span>
       <span>Lines: {{ lineCount }}</span>
     </div>
   </div>
@@ -112,7 +113,7 @@ const templates: Record<string, string> = {
   nodeQuery: `// Query specific isolated node partition
 async function handler(ctx) {
   const query = ctx.query.q || '';
-  const nodeId = ctx.params.nodeId || 'akai';
+  const nodeId = ctx.params.nodeId || (await ctx.db.query('SELECT node_id FROM nodes LIMIT 1'))[0]?.node_id;
   
   ctx.log(\`Searching node "\${nodeId}" for: "\${query}"\`);
   const results = await ctx.nodes.searchLyrics(nodeId, query, 15);
@@ -185,17 +186,30 @@ async function handler(ctx) {
 }`,
   customTransform: `// Custom JSON Transformation & Filter
 async function handler(ctx) {
-  const songs = await ctx.db.query(
-    'SELECT title, artist, views_count FROM lyrics_pine ORDER BY views_count DESC LIMIT 10'
-  );
+  const nodes = await ctx.nodes.listNodes();
 
-  const formatted = songs.map(s => ({
-    track: \`\${s.title} - \${s.artist}\`,
-    popularityScore: Math.round(s.views_count / 1000)
+  const summary = nodes.map(n => ({
+    node: n.node_id,
+    name: n.name,
+    external: Boolean(n.is_special)
   }));
 
   return ctx.json({
-    trendingSummary: formatted
+    nodeSummary: summary
+  });
+}`,
+  minaiGenerate: `// MIN-AI Lyric Generator (v2.2+)
+async function handler(ctx) {
+  const seed = ctx.query.seed || '';
+  const lines = Math.min(parseInt(ctx.query.lines || '4', 10), 12);
+
+  ctx.log(\`Generating \${lines} lines (seed: "\${seed}")\`);
+  const poem = await ctx.minai.generate({ seed, lines });
+
+  return ctx.json({
+    status: 'success',
+    trained: poem.trained,
+    lines: poem.lines
   });
 }`,
 };

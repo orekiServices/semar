@@ -48,11 +48,13 @@ router.post('/test-db', async (req, res, next) => {
       const adapter = new MysqlAdapter(connectionString || config);
       testRes = await adapter.testConnection();
       await adapter.close();
-    } else {
-      const { SqliteAdapter } = await import('../db/sqlite.js');
-      const adapter = new SqliteAdapter(connectionString || './data/semar.db');
+    } else if (type === 'pglite') {
+      const { PgliteAdapter } = await import('../db/pglite.js');
+      const adapter = new PgliteAdapter(connectionString || undefined);
       testRes = await adapter.testConnection();
       await adapter.close();
+    } else {
+      testRes = { success: false, error: `Unsupported database type: ${type}` };
     }
 
     res.json(testRes);
@@ -80,9 +82,9 @@ router.post('/initialize', async (req, res, next) => {
 
     // 2. Create Admin Account
     if (admin && admin.username && admin.password) {
-      const existing = await db.queryOne('SELECT id FROM admin_users WHERE username = ?', [admin.username]);
+      const existing = await db.queryOne('SELECT username FROM admin_users WHERE username = ?', [admin.username]);
       if (existing) {
-        await authService.changeAdminPassword(existing.id, admin.password);
+        await authService.changeAdminPassword(admin.username, admin.password);
       } else {
         await authService.createAdminUser(admin.username, admin.password, 'superadmin');
       }
@@ -95,7 +97,7 @@ router.post('/initialize', async (req, res, next) => {
         'INSERT INTO system_config (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = ?',
         ['branding', brandStr, brandStr]
       ).catch(async () => {
-        // Fallback for MySQL/SQLite
+        // Fallback for MySQL (no ON CONFLICT support)
         await db.execute('UPDATE system_config SET value = ? WHERE key = ?', [brandStr, 'branding']);
       });
     }
@@ -104,7 +106,7 @@ router.post('/initialize', async (req, res, next) => {
     const systemSettingsStr = JSON.stringify({
       setupCompleted: true,
       completedAt: new Date().toISOString(),
-      defaultNode: 'akai',
+      defaultNode: '',
     });
     await db.execute('UPDATE system_config SET value = ? WHERE key = ?', [systemSettingsStr, 'system_settings']);
 

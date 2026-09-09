@@ -83,12 +83,37 @@
         </div>
       </div>
 
+      <div v-if="isSpecial" class="glass-card rounded-2xl p-4 border border-cyan-500/30 flex items-center gap-3 text-xs text-slate-300">
+        <Globe class="w-4 h-4 text-cyan-400 shrink-0" />
+        <span>Live from the <strong class="text-cyan-300">{{ song.node_id }}</strong> external library — read-only, lyrics belong to their respective owners.</span>
+      </div>
+
       <!-- Main Lyrics Card -->
       <div class="glass-card rounded-3xl p-6 sm:p-8 border border-slate-800 shadow-2xl h-[560px]">
         <NsfwGate v-if="song.is_explicit">
           <SyncedLyrics />
         </NsfwGate>
         <SyncedLyrics v-else />
+      </div>
+
+      <!-- More Like This (MIN-AI similarity) -->
+      <div v-if="similar.length > 0" class="glass-card rounded-2xl p-6 border border-slate-800">
+        <h4 class="font-bold text-sm text-white mb-4 flex items-center gap-2">
+          <Sparkles class="w-4 h-4 text-violet-400" />
+          More Like This
+        </h4>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <router-link
+            v-for="s in similar"
+            :key="`${s.track.node_id}-${s.track.id}`"
+            :to="`/lyrics/${s.track.node_id}/${encodeURIComponent(s.track.id)}`"
+            class="bg-slate-900/60 p-3.5 rounded-xl border border-slate-800 hover:border-violet-500/40 transition group"
+          >
+            <h5 class="text-xs font-bold text-white truncate group-hover:text-violet-300">{{ s.track.title }}</h5>
+            <p class="text-[11px] text-slate-400 truncate mt-0.5">{{ s.track.artist }}</p>
+            <span class="text-[10px] font-mono text-slate-500 uppercase">{{ s.track.node_id }} · {{ Math.round(s.score * 100) }}% match</span>
+          </router-link>
+        </div>
       </div>
 
       <!-- Extended Metadata Inspector -->
@@ -109,13 +134,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useLyricsStore } from '../stores/lyrics.store.js';
 import { useSystemStore } from '../stores/system.store.js';
 import SyncedLyrics from '../components/SyncedLyrics.vue';
 import NsfwGate from '../components/NsfwGate.vue';
-import { Music, Play, Youtube, Download, RefreshCw, AlertCircle, Database } from 'lucide-vue-next';
+import { Music, Play, Youtube, Download, RefreshCw, AlertCircle, Database, Globe, Sparkles } from 'lucide-vue-next';
 
 const route = useRoute();
 const lyricsStore = useLyricsStore();
@@ -123,21 +148,38 @@ const systemStore = useSystemStore();
 
 const song = ref<any>(null);
 const loading = ref<boolean>(true);
+const similar = ref<any[]>([]);
 
-onMounted(async () => {
+const isSpecial = computed(() => ['lrclib', 'lyricsovh'].includes((song.value?.node_id || '').toLowerCase()));
+
+onMounted(loadTrack);
+watch(() => [route.params.nodeId, route.params.id], loadTrack);
+
+async function loadTrack() {
   const nodeId = route.params.nodeId as string;
   const id = route.params.id as string;
+  loading.value = true;
+  similar.value = [];
   try {
-    const res = await fetch(`/api/v1/lyrics/${nodeId}/${id}`);
+    const res = await fetch(`/api/v1/lyrics/${nodeId}/${encodeURIComponent(id)}`);
     const data = await res.json();
     if (data.lyrics) {
       song.value = data.lyrics;
       lyricsStore.playSong(data.lyrics);
+      fetchSimilar(nodeId, id);
     }
   } catch {} finally {
     loading.value = false;
   }
-});
+}
+
+async function fetchSimilar(nodeId: string, id: string) {
+  try {
+    const res = await fetch(`/api/minai/similar/${nodeId}/${encodeURIComponent(id)}?limit=4`);
+    const data = await res.json();
+    if (data.results) similar.value = data.results;
+  } catch {}
+}
 
 function downloadLrc() {
   if (!song.value?.synced_lyrics) return;

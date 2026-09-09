@@ -26,7 +26,7 @@
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
       <MetricCard
         title="Total Indexed Scale"
-        :value="dashboardData?.overview?.totalApproxLyrics?.toLocaleString() || '783,000'"
+        :value="dashboardData?.overview?.totalApproxLyrics?.toLocaleString() || '0'"
         unit="tracks"
         subtext="Multi-node isolated capacity"
         :icon="Music"
@@ -35,7 +35,7 @@
 
       <MetricCard
         title="Active SemAPI Routes"
-        :value="dashboardData?.overview?.activeSemApiRoutes || '4'"
+        :value="dashboardData?.overview?.activeSemApiRoutes ?? '0'"
         unit="active"
         :subtext="`${dashboardData?.overview?.totalSemApiCalls || 0} total calls executed`"
         :icon="Zap"
@@ -59,6 +59,57 @@
         :icon="HardDrive"
         color="emerald"
       />
+    </div>
+
+    <!-- MIN-AI Engine Status (v2.2) -->
+    <div class="glass-panel rounded-3xl p-6 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div class="flex items-center gap-4">
+        <div class="w-11 h-11 rounded-2xl bg-violet-500/15 border border-violet-500/30 text-violet-300 flex items-center justify-center shrink-0">
+          <BrainCircuit class="w-5 h-5" />
+        </div>
+        <div>
+          <h3 class="text-sm font-bold text-white flex items-center gap-2">
+            MIN-AI Lyrics Engine
+            <span
+              v-if="dashboardData?.overview?.minai?.trained"
+              class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 uppercase"
+            >
+              Trained
+            </span>
+            <span
+              v-else
+              class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 uppercase"
+            >
+              Untrained
+            </span>
+          </h3>
+          <p class="text-xs text-slate-400 mt-0.5">
+            <template v-if="dashboardData?.overview?.minai?.trained">
+              Markov model: {{ dashboardData.overview.minai.tracks }} tracks · {{ dashboardData.overview.minai.states }} states · powers AI Generate, Finder & Similar
+            </template>
+            <template v-else>
+              Train on your catalog to enable AI Generate, Finder & Similar tracks
+            </template>
+          </p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <router-link
+          to="/ai"
+          class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition flex items-center gap-1.5"
+        >
+          <Sparkles class="w-3.5 h-3.5" />
+          Open AI Studio
+        </router-link>
+        <button
+          @click="trainMinai"
+          :disabled="trainingMinai"
+          class="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-xs font-bold transition flex items-center gap-1.5"
+        >
+          <RefreshCw class="w-3.5 h-3.5" :class="trainingMinai ? 'animate-spin' : ''" />
+          {{ trainingMinai ? 'Training...' : dashboardData?.overview?.minai?.trained ? 'Retrain' : 'Train Now' }}
+        </button>
+      </div>
     </div>
 
     <!-- Middle Section: Node Partitions & Request Volume Chart -->
@@ -90,7 +141,7 @@
               <div class="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
                 <div
                   class="h-full rounded-full transition-all duration-500"
-                  :class="node.isNsfw ? 'bg-rose-500' : node.nodeId === 'akai' ? 'bg-violet-500' : 'bg-emerald-500'"
+                  :class="node.isNsfw ? 'bg-rose-500' : 'bg-violet-500'"
                   :style="{ width: `${Math.min(100, Math.max(10, (node.approx / 500000) * 100))}%` }"
                 ></div>
               </div>
@@ -99,8 +150,8 @@
         </div>
 
         <div class="pt-4 mt-4 border-t border-slate-800/60 flex items-center justify-between text-xs text-slate-400">
-          <span>Active Nodes: {{ dashboardData?.overview?.activeNodes || 3 }}</span>
-          <span>Tables: {{ dashboardData?.overview?.totalTablesCount || 10 }}</span>
+          <span>Active Nodes: {{ dashboardData?.overview?.activeNodes ?? 0 }} ({{ dashboardData?.overview?.specialNodes ?? 0 }} external)</span>
+          <span>Tables: {{ dashboardData?.overview?.totalTablesCount ?? 0 }}</span>
         </div>
       </div>
 
@@ -251,10 +302,41 @@ import {
   BarChart3,
   RefreshCw,
   ArrowRight,
+  BrainCircuit,
+  Sparkles,
 } from 'lucide-vue-next';
+import { useSystemStore } from '../../stores/system.store.js';
 
+const systemStore = useSystemStore();
 const dashboardData = ref<any>(null);
 const refreshing = ref<boolean>(false);
+const trainingMinai = ref<boolean>(false);
+
+async function trainMinai() {
+  trainingMinai.value = true;
+  try {
+    const token = localStorage.getItem('semar_token');
+    const res = await fetch('/api/minai/train', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({}),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      systemStore.addToast('MIN-AI Trained', data.message || 'Model rebuilt from catalog.', 'success');
+      await refreshDashboard();
+    } else {
+      systemStore.addToast('Training Failed', data.error || 'Could not train model.', 'error');
+    }
+  } catch (err: any) {
+    systemStore.addToast('Error', err.message, 'error');
+  } finally {
+    trainingMinai.value = false;
+  }
+}
 
 onMounted(async () => {
   await refreshDashboard();

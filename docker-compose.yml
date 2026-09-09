@@ -1,5 +1,5 @@
 services:
-  # ── Semar lyrics engine ──────────────────────────────────────────
+  # ── Semar lyrics engine (Postgres-backed) ────────────────────────
   semar:
     build: .
     container_name: semar
@@ -9,11 +9,8 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
-      # Uncomment to use the bundled Postgres instead of embedded SQLite:
-      # POSTGRES_URL: postgres://semar:semar_secret@postgres:5432/semar
+      POSTGRES_URL: postgres://semar:semar_secret@postgres:5432/semar
       JWT_SECRET: ${JWT_SECRET:-change_me_in_production}
-    volumes:
-      - semar-data:/app/data
     depends_on:
       postgres:
         condition: service_healthy
@@ -24,7 +21,7 @@ services:
       retries: 3
       start_period: 20s
 
-  # ── Production-grade Postgres (optional, for scale) ─────────────────
+  # ── PostgreSQL 16 (required — SQLite was removed in v2.2) ────────
   postgres:
     image: postgres:16-alpine
     container_name: semar-postgres
@@ -42,5 +39,4 @@ services:
       retries: 5
 
 volumes:
-  semar-data:
   postgres-data:

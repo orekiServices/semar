@@ -42,11 +42,13 @@ router.post('/test', requireAdminAuth, async (req, res, next) => {
       const adapter = new MysqlAdapter(connectionString || config);
       testRes = await adapter.testConnection();
       await adapter.close();
-    } else {
-      const { SqliteAdapter } = await import('../db/sqlite.js');
-      const adapter = new SqliteAdapter(connectionString || './data/semar.db');
+    } else if (type === 'pglite') {
+      const { PgliteAdapter } = await import('../db/pglite.js');
+      const adapter = new PgliteAdapter(connectionString || undefined);
       testRes = await adapter.testConnection();
       await adapter.close();
+    } else {
+      testRes = { success: false, type, error: `Unsupported database type: ${type}` };
     }
 
     res.json(testRes);
@@ -102,7 +104,7 @@ router.get('/backup', requireAdminAuth, async (req, res, next) => {
 
     res.setHeader('Content-Disposition', `attachment; filename=semar-backup-${new Date().toISOString().slice(0, 10)}.json`);
     res.json({
-      semarVersion: '2.1.0',
+      semarVersion: '2.2.0',
       engine: db.type,
       exportedAt: new Date().toISOString(),
       tables: {

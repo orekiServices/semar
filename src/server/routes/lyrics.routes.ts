@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { lyricsService } from '../services/lyrics.service.js';
 import { cacheService } from '../services/cache.service.js';
 import { requireAdminAuth, trackApiKey, type AuthenticatedRequest } from '../middleware/auth.middleware.js';
+import { isSpecialNode } from '../services/providers/index.js';
 import { logsService } from '../services/logs.service.js';
 
 const router = Router();
@@ -75,6 +76,22 @@ router.get('/trending', trackApiKey, async (req: AuthenticatedRequest, res, next
       count: tracks.length,
       results: tracks,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// v2.2 — Random track serendipity (local nodes only)
+router.get('/random', trackApiKey, async (req: AuthenticatedRequest, res, next) => {
+  try {
+    if (!hasReadPermission(req)) {
+      return res.status(403).json({ error: 'Forbidden: API key lacks "read" permission' });
+    }
+    const track = await lyricsService.getRandom();
+    if (!track) {
+      return res.status(404).json({ status: 'not_found', message: 'No tracks in local nodes yet. Create a node and add lyrics, or browse special external nodes.' });
+    }
+    res.json({ status: 'success', lyrics: track });
   } catch (err) {
     next(err);
   }
@@ -163,7 +180,7 @@ router.get('/:nodeId/:id', trackApiKey, async (req: AuthenticatedRequest, res, n
     if (nodeIds && !nodeIds.map((n) => n.toLowerCase()).includes(nodeId.toLowerCase())) {
       return res.status(403).json({ error: `Forbidden: API key is not scoped to node "${nodeId}"` });
     }
-    const lyrics = await lyricsService.getLyricsById(nodeId, parseInt(id, 10));
+    const lyrics = await lyricsService.getLyricsById(nodeId, id);
     if (!lyrics) {
       return res.status(404).json({ error: `Lyrics not found in node "${nodeId}" with ID ${id}` });
     }
@@ -194,7 +211,7 @@ router.get('/:nodeId/:id/ttml', trackApiKey, async (req: AuthenticatedRequest, r
     if (nodeIds && !nodeIds.map((n) => n.toLowerCase()).includes(nodeId.toLowerCase())) {
       return res.status(403).json({ error: `Forbidden: API key is not scoped to node "${nodeId}"` });
     }
-    const lyrics = await lyricsService.getLyricsById(nodeId, parseInt(id, 10));
+    const lyrics = await lyricsService.getLyricsById(nodeId, id);
     if (!lyrics || !lyrics.ttml_lyrics) {
       return res.status(404).json({ error: `TTML lyrics not available for track ID ${id}` });
     }
@@ -210,6 +227,9 @@ router.put('/:nodeId/:id', requireAdminAuth, async (req, res, next) => {
   try {
     const nodeId = req.params.nodeId as string;
     const id = req.params.id as string;
+    if (isSpecialNode(nodeId)) {
+      return res.status(400).json({ error: `Cannot write to special external node "${nodeId}".` });
+    }
     const success = await lyricsService.updateLyrics(nodeId, parseInt(id, 10), req.body);
     if (!success) {
       return res.status(404).json({ error: `Lyrics not found in node "${nodeId}" with ID ${id}` });
@@ -226,6 +246,9 @@ router.delete('/:nodeId/:id', requireAdminAuth, async (req, res, next) => {
   try {
     const nodeId = req.params.nodeId as string;
     const id = req.params.id as string;
+    if (isSpecialNode(nodeId)) {
+      return res.status(400).json({ error: `Cannot write to special external node "${nodeId}".` });
+    }
     await lyricsService.deleteLyrics(nodeId, parseInt(id, 10));
     await logsService.recordAudit('LYRICS_DELETED', (req as any).user?.username, { nodeId, songId: id }, req.ip);
     res.json({ status: 'success', message: 'Lyrics record deleted' });

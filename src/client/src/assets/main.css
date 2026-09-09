@@ -10,20 +10,30 @@
   }
 }
 
-/* Custom modern scrollbars */
+/* v2.2 minimalist theme tokens */
+@layer base {
+  ::selection {
+    background: rgba(139, 92, 246, 0.35);
+  }
+  input, select, textarea, button {
+    font-family: inherit;
+  }
+}
+
+/* Slim neutral scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.6);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(139, 92, 246, 0.3);
+  background: rgba(148, 163, 184, 0.25);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(139, 92, 246, 0.6);
+  background: rgba(148, 163, 184, 0.45);
 }
 
 /* Glassmorphism helpers */

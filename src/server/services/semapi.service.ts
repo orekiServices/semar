@@ -4,6 +4,7 @@ import { nodeService } from './node.service.js';
 import { lyricsService } from './lyrics.service.js';
 import { cacheService } from './cache.service.js';
 import { lrcToTtml, ttmlToLrc } from './ttml.util.js';
+import { minaiService } from './minai.service.js';
 
 export interface SemApiRoute {
   id: string;
@@ -62,7 +63,7 @@ export class SemApiService {
     const rows = await db.query<any>(
       `SELECT * FROM semapi_routes 
        WHERE enabled = ? AND (method = ? OR method = 'ALL')`,
-      [db.type === 'sqlite' ? 1 : true, cleanMethod]
+      [true, cleanMethod]
     );
 
     for (const r of rows) {
@@ -121,7 +122,6 @@ export class SemApiService {
   async createRoute(data: Partial<SemApiRoute>): Promise<SemApiRoute> {
     const db = getDb();
     const id = data.id || 'route-' + Math.random().toString(36).substring(2, 9);
-    const isSqlite = db.type === 'sqlite';
 
     const stringify = (val: any) => typeof val === 'object' ? JSON.stringify(val) : val;
 
@@ -133,8 +133,8 @@ export class SemApiService {
         data.name || 'Custom Dynamic Route',
         data.path || '/v1/custom/endpoint',
         (data.method || 'GET').toUpperCase(),
-        data.enabled !== false ? (isSqlite ? 1 : true) : (isSqlite ? 0 : false),
-        data.auth_required ? (isSqlite ? 1 : true) : (isSqlite ? 0 : false),
+        data.enabled !== false,
+        Boolean(data.auth_required),
         data.api_key_header || 'X-SemAPI-Key',
         data.rate_limit_rpm || 60,
         stringify(data.permissions || []),
@@ -154,8 +154,6 @@ export class SemApiService {
     const db = getDb();
     const existing = await this.getRoute(id);
     if (!existing) return null;
-
-    const isSqlite = db.type === 'sqlite';
     const stringify = (val: any) => typeof val === 'object' ? JSON.stringify(val) : val;
 
     await db.execute(
@@ -166,8 +164,8 @@ export class SemApiService {
         data.name !== undefined ? data.name : existing.name,
         data.path !== undefined ? data.path : existing.path,
         data.method !== undefined ? data.method.toUpperCase() : existing.method,
-        data.enabled !== undefined ? (data.enabled ? (isSqlite ? 1 : true) : (isSqlite ? 0 : false)) : (existing.enabled ? (isSqlite ? 1 : true) : (isSqlite ? 0 : false)),
-        data.auth_required !== undefined ? (data.auth_required ? (isSqlite ? 1 : true) : (isSqlite ? 0 : false)) : (existing.auth_required ? (isSqlite ? 1 : true) : (isSqlite ? 0 : false)),
+        data.enabled !== undefined ? (Boolean(data.enabled)) : (Boolean(existing.enabled)),
+        data.auth_required !== undefined ? (Boolean(data.auth_required)) : (Boolean(existing.auth_required)),
         data.api_key_header !== undefined ? data.api_key_header : existing.api_key_header,
         data.rate_limit_rpm !== undefined ? data.rate_limit_rpm : existing.rate_limit_rpm,
         data.permissions !== undefined ? stringify(data.permissions) : JSON.stringify(existing.permissions),
@@ -193,10 +191,9 @@ export class SemApiService {
 
   async toggleRoute(id: string, enabled: boolean): Promise<boolean> {
     const db = getDb();
-    const isSqlite = db.type === 'sqlite';
     await db.execute(
       'UPDATE semapi_routes SET enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [enabled ? (isSqlite ? 1 : true) : (isSqlite ? 0 : false), id]
+      [Boolean(enabled), id]
     );
     return true;
   }
@@ -212,7 +209,7 @@ export class SemApiService {
     } = route as any;
     return {
       exportedAt: new Date().toISOString(),
-      semarVersion: '2.1.0',
+      semarVersion: '2.2.0',
       route: portable,
     };
   }
@@ -337,10 +334,16 @@ export class SemApiService {
         set: async (key: string, val: any, ttlMs?: number) => cacheService.set(key, val, ttlMs),
         delete: async (key: string) => cacheService.delete(key),
       },
+      minai: {
+        generate: async (opts?: any) => minaiService.generate(opts || {}),
+        finder: async (q: string, limit?: number) => minaiService.finder(q, limit),
+        similar: async (nodeId: string, id: number | string, limit?: number) => minaiService.similar(nodeId, id, limit),
+        status: async () => minaiService.getStatus(),
+      },
       fetch: globalThis.fetch ? globalThis.fetch.bind(globalThis) : undefined,
       env: {
         NODE_ENV: process.env.NODE_ENV || 'production',
-        SEMAR_VERSION: '2.0.0',
+        SEMAR_VERSION: '2.2.0',
       },
       log: (...args: any[]) => {
         const line = args.map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
@@ -463,7 +466,6 @@ export class SemApiService {
     error?: string
   ): Promise<void> {
     const db = getDb();
-    const isSqlite = db.type === 'sqlite';
 
     // 1. Update route counters
     await db.execute(
@@ -567,7 +569,7 @@ export class SemApiService {
       totalCalls,
       totalErrors,
       errorRate: totalCalls > 0 ? parseFloat(((totalErrors / totalCalls) * 100).toFixed(2)) : 0,
-      totalLogsRecorded: logsCount?.count || 0,
+      totalLogsRecorded: Number(logsCount?.count) || 0,
     };
   }
 }

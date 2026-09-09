@@ -10,8 +10,13 @@
       </p>
     </div>
 
+    <div v-if="nodes.length === 0" class="py-16 text-center glass-card rounded-2xl p-8 space-y-3">
+      <h4 class="font-bold text-white">No nodes yet</h4>
+      <p class="text-xs text-slate-400 max-w-sm mx-auto">This instance has no lyric nodes. An admin can provision one from the control panel.</p>
+    </div>
+
     <!-- Node Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div v-else class="grid grid-cols-1 md:grid-cols-3 gap-6">
       <div
         v-for="node in nodes"
         :key="node.node_id"
@@ -24,7 +29,13 @@
               {{ node.node_id }}
             </span>
             <span
-              v-if="node.is_nsfw"
+              v-if="node.is_special"
+              class="text-xs font-bold px-2.5 py-0.5 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
+            >
+              External Library
+            </span>
+            <span
+              v-else-if="node.is_nsfw"
               class="text-xs font-bold px-2.5 py-0.5 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/30"
             >
               18+ Mature
@@ -49,8 +60,9 @@
               <span class="text-white font-bold">{{ node.total_records_approx?.toLocaleString() || node.real_record_count }} tracks</span>
             </div>
             <div class="flex items-center justify-between">
-              <span class="text-slate-400">Storage Table:</span>
-              <span class="text-violet-300 font-semibold">{{ node.table_name }}</span>
+              <span class="text-slate-400">Storage:</span>
+              <span v-if="node.is_special" class="text-cyan-300 font-semibold">live · read-only</span>
+              <span v-else class="text-violet-300 font-semibold">{{ node.table_name }}</span>
             </div>
             <div class="flex items-center justify-between">
               <span class="text-slate-400">Rate Limit:</span>
@@ -65,7 +77,7 @@
             class="flex-1 text-center py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs shadow-md shadow-violet-600/20 transition flex items-center justify-center gap-1.5"
           >
             <FolderTree class="w-3.5 h-3.5" />
-            Explore Catalog
+            {{ node.is_special ? 'Search Library' : 'Explore Catalog' }}
           </router-link>
         </div>
       </div>

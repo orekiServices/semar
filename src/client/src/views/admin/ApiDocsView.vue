@@ -60,7 +60,7 @@ const endpoints = ref<any[]>([
     method: 'GET',
     path: '/api/v1/lyrics/search?q={query}&limit={limit}',
     scope: 'Public / Core',
-    description: 'Searches all active partitioned nodes (Akai, PiNE, PAKAI) with full-text matching and view count ranking.',
+    description: 'Searches all active nodes (local partitions first, then external libraries) with full-text matching and view count ranking.',
     curl: 'curl -X GET "http://localhost:3000/api/v1/lyrics/search?q=Gurenge"',
   },
   {
@@ -68,7 +68,7 @@ const endpoints = ref<any[]>([
     path: '/api/v1/lyrics/:nodeId/:id/ttml',
     scope: 'Public / Core',
     description: 'Returns raw Apple Music compliant TTML XML lyrics payload with syllable span markers.',
-    curl: 'curl -X GET "http://localhost:3000/api/v1/lyrics/akai/1/ttml"',
+    curl: 'curl -X GET "http://localhost:3000/api/v1/lyrics/anime/1/ttml"',
   },
   {
     method: 'GET',
@@ -82,7 +82,7 @@ const endpoints = ref<any[]>([
     path: '/api/v1/lyrics/youtube/associate',
     scope: 'Admin Protected',
     description: 'Manually maps or updates a YouTube Video ID association to a song record.',
-    curl: 'curl -X POST "http://localhost:3000/api/v1/lyrics/youtube/associate" -H "Authorization: Bearer <token>" -d \'{"videoId": "CwkzK-Fh400", "nodeId": "akai"}\'',
+    curl: 'curl -X POST "http://localhost:3000/api/v1/lyrics/youtube/associate" -H "Authorization: Bearer <token>" -d \'{"videoId": "CwkzK-Fh400", "nodeId": "anime"}\'',
   },
   {
     method: 'GET',
@@ -95,8 +95,15 @@ const endpoints = ref<any[]>([
     method: 'ALL',
     path: '/api/semapi/run/:path*',
     scope: 'SemAPI Runtime',
-    description: 'Dynamic JavaScript execution dispatcher running in isolated Node.js VM context.',
+    description: 'Dynamic JavaScript execution dispatcher running in isolated Node.js VM context. Handlers can call ctx.minai.generate/finder/similar.',
     curl: 'curl -X GET "http://localhost:3000/api/semapi/run/v1/anime/search?q=LiSA"',
+  },
+  {
+    method: 'POST',
+    path: '/api/minai/train',
+    scope: 'Admin Protected',
+    description: 'Rebuilds the MIN-AI Markov model from all local plain lyrics. Runs automatically on first generate call.',
+    curl: 'curl -X POST "http://localhost:3000/api/minai/train" -H "Authorization: Bearer <token>" -d \'{}\'',
   },
 ]);
 

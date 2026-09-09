@@ -19,7 +19,8 @@
             </span>
             <h2 class="text-2xl sm:text-3xl font-black text-white tracking-tight">{{ node.name }}</h2>
           </div>
-          <p class="text-xs text-slate-400 mt-1">Isolated Table: <code class="text-violet-300 font-mono">{{ node.table_name }}</code> • Rate limit: {{ node.rate_limit }} rpm</p>
+          <p v-if="node.is_special" class="text-xs text-slate-400 mt-1">External provider node • no local table • Rate limit: {{ node.rate_limit }} rpm</p>
+          <p v-else class="text-xs text-slate-400 mt-1">Isolated Table: <code class="text-violet-300 font-mono">{{ node.table_name }}</code> • Rate limit: {{ node.rate_limit }} rpm</p>
         </div>
 
         <!-- Node Selector Dropdown -->
@@ -36,8 +37,27 @@
         </div>
       </div>
 
+      <!-- Special nodes are read-only: no local table to manage -->
+      <div v-if="node.is_special" class="glass-panel rounded-3xl p-8 border border-cyan-500/30 text-center space-y-4">
+        <div class="w-14 h-14 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 flex items-center justify-center mx-auto">
+          <Globe class="w-7 h-7" />
+        </div>
+        <h3 class="text-lg font-bold text-white">External Library — Read Only</h3>
+        <p class="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+          <code class="text-cyan-300 font-mono">{{ node.node_id }}</code> is a built-in special node that queries
+          {{ node.description }} There is no local table, so tracks cannot be added, edited, or deleted here.
+          Toggle it for global search in <router-link to="/admin/settings" class="text-cyan-300 underline">System Settings</router-link>.
+        </p>
+        <router-link
+          :to="`/nodes/${node.node_id}`"
+          class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition"
+        >
+          Open Public Library Page
+        </router-link>
+      </div>
+
       <!-- Navigation Tabs -->
-      <div class="flex items-center gap-2 border-b border-slate-800 pb-2">
+      <div v-if="!node.is_special" class="flex items-center gap-2 border-b border-slate-800 pb-2">
         <button
           @click="tab = 'lyrics'"
           class="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2"
@@ -65,7 +85,7 @@
       </div>
 
       <!-- Tab: Isolated Lyrics Table -->
-      <div v-if="tab === 'lyrics'" class="space-y-6">
+      <div v-if="tab === 'lyrics' && !node.is_special" class="space-y-6">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div class="relative flex-1 max-w-md">
             <Search class="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
@@ -145,7 +165,7 @@
       </div>
 
       <!-- Tab: About & Rules -->
-      <div v-if="tab === 'about'" class="glass-panel rounded-3xl p-6 border border-slate-800 space-y-6">
+      <div v-if="tab === 'about' && !node.is_special" class="glass-panel rounded-3xl p-6 border border-slate-800 space-y-6">
         <h3 class="text-base font-bold text-white">Node Public About Configuration</h3>
 
         <form @submit.prevent="saveAboutConfig" class="space-y-4 max-w-2xl">
@@ -188,7 +208,7 @@
       </div>
 
       <!-- Tab: Config & Limits -->
-      <div v-if="tab === 'config'" class="glass-panel rounded-3xl p-6 border border-slate-800 space-y-6">
+      <div v-if="tab === 'config' && !node.is_special" class="glass-panel rounded-3xl p-6 border border-slate-800 space-y-6">
         <h3 class="text-base font-bold text-white">Node Limits & Flags</h3>
 
         <form @submit.prevent="saveNodeConfig" class="space-y-4 max-w-2xl">
@@ -246,7 +266,7 @@
     </div>
 
     <!-- Add Track Modal -->
-    <Modal v-model="showAddTrackModal" :title="`Add Lyrics to ${node?.node_id?.toUpperCase()}`" size="xl">
+    <Modal v-if="!node?.is_special" v-model="showAddTrackModal" :title="`Add Lyrics to ${node?.node_id?.toUpperCase()}`" size="xl">
       <form @submit.prevent="addTrack" class="space-y-4">
         <div class="grid grid-cols-2 gap-4">
           <div>
@@ -335,6 +355,7 @@ import {
   Youtube,
   Sparkles,
   RefreshCw,
+  Globe,
 } from 'lucide-vue-next';
 
 const route = useRoute();

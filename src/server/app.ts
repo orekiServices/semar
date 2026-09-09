@@ -17,6 +17,7 @@ import securityRoutes from './routes/security.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
 import pagesRoutes from './routes/pages.routes.js';
 import submissionsRoutes from './routes/submissions.routes.js';
+import minaiRoutes from './routes/minai.routes.js';
 import { errorHandler } from './middleware/error.middleware.js';
 import { globalRateLimiter } from './middleware/rate-limit.middleware.js';
 import { metricsMiddleware } from './middleware/metrics.middleware.js';
@@ -46,7 +47,7 @@ export function createApp() {
     res.json({
       status: 'healthy',
       service: 'Semar Lyrics Engine',
-      version: '2.1.0',
+      version: '2.2.0',
       timestamp: new Date().toISOString(),
     });
   });
@@ -84,6 +85,7 @@ export function createApp() {
   app.use('/api/v1/cache', cacheRoutes);
   app.use('/api/v1/submissions', submissionsRoutes);
   app.use('/api/admin/submissions', submissionsRoutes);
+  app.use('/api/minai', minaiRoutes);
   app.use('/api/semapi', semapiRoutes);
   app.use('/api/admin/database', databaseRoutes);
   app.use('/api/admin/stats', statsRoutes);

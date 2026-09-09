@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { nodeService } from '../services/node.service.js';
 import { lyricsService } from '../services/lyrics.service.js';
+import { isSpecialNode } from '../services/providers/index.js';
 import { requireAdminAuth } from '../middleware/auth.middleware.js';
 import { logsService } from '../services/logs.service.js';
 
@@ -66,6 +67,9 @@ router.post('/', requireAdminAuth, async (req, res, next) => {
 // Admin: update node
 router.put('/:id', requireAdminAuth, async (req, res, next) => {
   try {
+    if (isSpecialNode(req.params.id as string)) {
+      return res.status(400).json({ error: `Special external node "${req.params.id}" is managed by its provider and cannot be modified.` });
+    }
     const updated = await nodeService.updateNode(req.params.id, req.body);
     if (!updated) {
       return res.status(404).json({ error: `Node "${req.params.id}" not found` });
@@ -81,8 +85,8 @@ router.put('/:id', requireAdminAuth, async (req, res, next) => {
 router.delete('/:id', requireAdminAuth, async (req, res, next) => {
   try {
     const nodeId = req.params.id;
-    if (['akai', 'pine', 'pakai'].includes(nodeId)) {
-      return res.status(400).json({ error: `System default node "${nodeId}" cannot be deleted.` });
+    if (isSpecialNode(nodeId as string)) {
+      return res.status(400).json({ error: `Special external node "${nodeId}" cannot be deleted.` });
     }
     await nodeService.deleteNode(nodeId);
     await logsService.recordAudit('NODE_DELETED', (req as any).user?.username, { nodeId }, req.ip);
@@ -121,6 +125,9 @@ router.get('/:id/lyrics', async (req, res, next) => {
 router.post('/:id/lyrics', requireAdminAuth, async (req, res, next) => {
   try {
     const nodeId = req.params.id;
+    if (isSpecialNode(nodeId as string)) {
+      return res.status(400).json({ error: `Cannot write to special external node "${nodeId}".` });
+    }
     const result = await lyricsService.saveLyrics(nodeId, req.body);
     await logsService.recordAudit('LYRICS_CREATED', (req as any).user?.username, { nodeId, songId: result.insertId, title: req.body.title }, req.ip);
     res.status(201).json({

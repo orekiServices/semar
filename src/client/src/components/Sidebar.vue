@@ -72,7 +72,7 @@
           </router-link>
 
           <router-link
-            to="/admin/nodes/akai"
+            :to="firstNodeLink"
             class="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition"
             :class="isNodeDetail ? 'bg-violet-600 text-white shadow-md shadow-violet-600/25' : 'text-slate-300 hover:text-white hover:bg-slate-900'"
           >
@@ -268,6 +268,16 @@ const router = useRouter();
 const authStore = useAuthStore();
 const systemStore = useSystemStore();
 const pendingSubmissions = ref<number>(0);
+const firstNodeLink = ref<string>('/admin/nodes');
+
+async function fetchFirstNode() {
+  try {
+    const res = await fetch('/api/v1/nodes');
+    const data = await res.json();
+    const local = (data.nodes || []).find((n: any) => !n.is_special);
+    firstNodeLink.value = local ? `/admin/nodes/${local.node_id}` : '/admin/nodes';
+  } catch {}
+}
 
 async function fetchPendingCount() {
   try {
@@ -281,7 +291,7 @@ async function fetchPendingCount() {
   } catch {}
 }
 
-onMounted(fetchPendingCount);
+onMounted(() => { fetchPendingCount(); fetchFirstNode(); });
 watch(() => route.path, fetchPendingCount);
 
 function isActive(path: string): boolean {

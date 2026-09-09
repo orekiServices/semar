@@ -115,7 +115,7 @@ export class CacheService {
     const metaStr = typeof item.metadata === 'object' ? JSON.stringify(item.metadata) : item.metadata || '{}';
     // v2.1 — optional TTL: expires_at timestamp for janitor-based eviction.
     // Stored as 'YYYY-MM-DD HH:MM:SS' (UTC) so lexical comparison works on
-    // SQLite TEXT columns and parses natively on Postgres/MySQL.
+    // UTC lexical ordering, parses natively on Postgres/MySQL/PGlite.
     const toDbTimestamp = (d: Date) => d.toISOString().slice(0, 19).replace('T', ' ');
     const expiresAt = item.ttlDays && item.ttlDays > 0
       ? toDbTimestamp(new Date(Date.now() + item.ttlDays * 24 * 3600_000))
@@ -183,7 +183,7 @@ export class CacheService {
       `SELECT COUNT(*) as count FROM youtube_cache ${whereClause}`,
       params
     );
-    const total = countRow?.count || 0;
+    const total = Number(countRow?.count) || 0;
 
     const rows = await db.query<any>(
       `SELECT * FROM youtube_cache ${whereClause} ORDER BY last_accessed_at DESC LIMIT ? OFFSET ?`,

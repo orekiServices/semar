@@ -19,7 +19,7 @@ router.get('/public', async (req, res, next) => {
       status: 'success',
       branding,
       about,
-      engine: 'Semar v2.0.0',
+      engine: 'Semar v2.2.0',
     });
   } catch (err) {
     next(err);
@@ -58,7 +58,6 @@ router.put('/', requireAdminAuth, async (req, res, next) => {
   try {
     const db = getDb();
     const settings = req.body;
-    const isSqlite = db.type === 'sqlite';
 
     for (const [key, val] of Object.entries(settings)) {
       const valStr = typeof val === 'object' ? JSON.stringify(val) : String(val);

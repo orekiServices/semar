@@ -37,7 +37,13 @@
               {{ node.node_id }}
             </span>
             <span
-              v-if="node.is_nsfw"
+              v-if="node.is_special"
+              class="text-xs font-bold px-2.5 py-0.5 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
+            >
+              External · Read-only
+            </span>
+            <span
+              v-else-if="node.is_nsfw"
               class="text-xs font-bold px-2.5 py-0.5 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/30"
             >
               18+ Mature
@@ -63,7 +69,8 @@
             </div>
             <div class="flex justify-between">
               <span class="text-slate-400">Isolated Table:</span>
-              <span class="text-violet-300 font-semibold">{{ node.table_name }}</span>
+              <span v-if="node.is_special" class="text-cyan-300 font-semibold">— external —</span>
+              <span v-else class="text-violet-300 font-semibold">{{ node.table_name }}</span>
             </div>
             <div class="flex justify-between">
               <span class="text-slate-400">Rate Limit:</span>
@@ -82,11 +89,11 @@
             class="flex-1 text-center py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs shadow-md shadow-violet-600/20 transition flex items-center justify-center gap-1.5"
           >
             <FolderTree class="w-3.5 h-3.5" />
-            Manage Node Details
+            {{ node.is_special ? 'View Details' : 'Manage Node Details' }}
           </router-link>
 
           <button
-            v-if="!['akai', 'pine', 'pakai'].includes(node.node_id)"
+            v-if="!node.is_special"
             @click="deleteNode(node.node_id)"
             class="p-2.5 rounded-xl bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-slate-700 transition"
             title="Delete Node Partition"
@@ -110,6 +117,7 @@
               class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-mono focus:outline-none focus:border-violet-500"
               placeholder="e.g. kpop, vocaloid, indie"
             />
+            <p class="text-[11px] text-slate-500 mt-1.5">Lowercase letters, numbers, underscores. <code class="text-cyan-400 font-mono">lrclib</code> and <code class="text-cyan-400 font-mono">lyricsovh</code> are reserved for external libraries.</p>
           </div>
 
           <div>

@@ -186,7 +186,7 @@ onMounted(async () => {
     const res = await fetch('/api/v1/nodes');
     const data = await res.json();
     if (data.nodes) {
-      nodes.value = data.nodes.filter((n: any) => n.status === 'active');
+      nodes.value = data.nodes.filter((n: any) => n.status === 'active' && !n.is_special);
     }
   } catch {}
 });

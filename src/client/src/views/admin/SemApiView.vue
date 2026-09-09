@@ -283,7 +283,7 @@
               v-model="tagsInput"
               type="text"
               class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs focus:outline-none focus:border-violet-500"
-              placeholder="Anime, Fast, Akai"
+              placeholder="Lyrics, Search, AI"
             />
           </div>
         </div>

@@ -161,9 +161,7 @@
               v-model="associateForm.nodeId"
               class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-mono"
             >
-              <option value="akai">AKAI</option>
-              <option value="pine">PINE</option>
-              <option value="pakai">PAKAI</option>
+              <option v-for="n in localNodes" :key="n.node_id" :value="n.node_id">{{ n.node_id.toUpperCase() }}</option>
             </select>
           </div>
         </div>
@@ -243,16 +241,30 @@ const warming = ref<boolean>(false);
 const showAssociateModal = ref<boolean>(false);
 const associateForm = ref<any>({
   videoId: '',
-  nodeId: 'akai',
+  nodeId: '',
   title: '',
   artist: '',
   syncedLyrics: '',
 });
 
+const localNodes = ref<any[]>([]);
+
 onMounted(async () => {
+  await fetchLocalNodes();
   await fetchCacheStats();
   await fetchCacheItems();
 });
+
+async function fetchLocalNodes() {
+  try {
+    const res = await fetch('/api/v1/nodes');
+    const data = await res.json();
+    localNodes.value = (data.nodes || []).filter((n: any) => !n.is_special);
+    if (!associateForm.value.nodeId && localNodes.value.length > 0) {
+      associateForm.value.nodeId = localNodes.value[0].node_id;
+    }
+  } catch {}
+}
 
 async function fetchCacheStats() {
   try {
@@ -325,7 +337,7 @@ async function purgeSingle(videoId: string) {
 function openAssociateModal() {
   associateForm.value = {
     videoId: '',
-    nodeId: 'akai',
+    nodeId: '',
     title: '',
     artist: '',
     syncedLyrics: '',

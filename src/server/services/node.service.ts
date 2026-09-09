@@ -1,4 +1,6 @@
 import { getDb } from '../db/index.js';
+import { SPECIAL_NODES, getSpecialNode, type SpecialNodeDef } from './providers/index.js';
+import { isExternalNodesEnabled } from './providers/index.js';
 
 export interface NodeRecord {
   node_id: string;
@@ -15,6 +17,31 @@ export interface NodeRecord {
   created_at?: string;
   updated_at?: string;
   real_record_count?: number;
+  /** v2.2 — true for virtual external-library nodes (no local table). */
+  is_special?: boolean;
+}
+
+export function specialNodeToRecord(def: SpecialNodeDef): NodeRecord {
+  return {
+    node_id: def.node_id,
+    name: def.name,
+    description: def.description,
+    table_name: '',
+    storage_mode: 'external',
+    is_nsfw: false,
+    status: 'active',
+    rate_limit: 60,
+    total_records_approx: 0,
+    about_config: {
+      tagline: 'Live third-party lyrics library gateway.',
+      maintainer: def.provider.name,
+      homepage: def.homepage,
+      bannerUrl: def.bannerUrl,
+    },
+    api_config: {},
+    real_record_count: -1,
+    is_special: true,
+  };
 }
 
 export class NodeService {
@@ -38,10 +65,24 @@ export class NodeService {
       })
     );
 
+    // v2.2 — append virtual external-library special nodes
+    if (await isExternalNodesEnabled()) {
+      for (const def of SPECIAL_NODES) {
+        enriched.push(specialNodeToRecord(def));
+      }
+    }
+
     return enriched;
   }
 
   async getNode(nodeId: string): Promise<NodeRecord | null> {
+    // v2.2 — special nodes resolve without a database row
+    const special = getSpecialNode(nodeId);
+    if (special) {
+      if (!(await isExternalNodesEnabled())) return null;
+      return specialNodeToRecord(special);
+    }
+
     const db = getDb();
     const node = await db.queryOne<any>('SELECT * FROM nodes WHERE node_id = ?', [nodeId]);
     if (!node) return null;
@@ -60,12 +101,12 @@ export class NodeService {
     const db = getDb();
     const nodeId = (data.node_id || '').toLowerCase().replace(/[^a-z0-9_]/g, '');
     if (!nodeId) throw new Error('Invalid node_id');
+    if (getSpecialNode(nodeId)) throw new Error(`Node id "${nodeId}" is reserved for an external special node`);
 
     const existing = await this.getNode(nodeId);
     if (existing) throw new Error(`Node "${nodeId}" already exists`);
 
     const tableName = `lyrics_${nodeId}`;
-    const isSqlite = db.type === 'sqlite';
 
     // 1. Create isolated storage table
     await db.createNodeTable(nodeId);
@@ -80,7 +121,7 @@ export class NodeService {
         data.description || '',
         tableName,
         data.storage_mode || 'isolated_table',
-        data.is_nsfw ? (isSqlite ? 1 : true) : (isSqlite ? 0 : false),
+        Boolean(data.is_nsfw),
         data.status || 'active',
         data.rate_limit || 120,
         data.total_records_approx || 0,
@@ -93,14 +134,13 @@ export class NodeService {
   }
 
   async updateNode(nodeId: string, data: Partial<NodeRecord>): Promise<NodeRecord | null> {
+    if (getSpecialNode(nodeId)) throw new Error(`Special external node "${nodeId}" cannot be modified`);
     const db = getDb();
     const existing = await this.getNode(nodeId);
     if (!existing) return null;
-
-    const isSqlite = db.type === 'sqlite';
     const name = data.name !== undefined ? data.name : existing.name;
     const description = data.description !== undefined ? data.description : existing.description;
-    const isNsfw = data.is_nsfw !== undefined ? (data.is_nsfw ? (isSqlite ? 1 : true) : (isSqlite ? 0 : false)) : (existing.is_nsfw ? (isSqlite ? 1 : true) : (isSqlite ? 0 : false));
+    const isNsfw = data.is_nsfw !== undefined ? (Boolean(data.is_nsfw)) : (Boolean(existing.is_nsfw));
     const status = data.status !== undefined ? data.status : existing.status;
     const rateLimit = data.rate_limit !== undefined ? data.rate_limit : existing.rate_limit;
     const totalApprox = data.total_records_approx !== undefined ? data.total_records_approx : existing.total_records_approx;
@@ -118,6 +158,7 @@ export class NodeService {
   }
 
   async deleteNode(nodeId: string): Promise<boolean> {
+    if (getSpecialNode(nodeId)) throw new Error(`Special external node "${nodeId}" cannot be deleted`);
     const db = getDb();
     await db.dropNodeTable(nodeId);
     await db.execute('DELETE FROM nodes WHERE node_id = ?', [nodeId]);

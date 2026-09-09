@@ -18,7 +18,7 @@ export class PagesService {
     const db = getDb();
     let sql = 'SELECT * FROM custom_pages';
     if (!includeDrafts) {
-      sql += ' WHERE is_published = ' + (db.type === 'sqlite' ? '1' : 'true');
+      sql += ' WHERE is_published = true';
     }
     sql += ' ORDER BY title ASC';
     const rows = await db.query<any>(sql);
@@ -44,7 +44,6 @@ export class PagesService {
 
   async savePage(data: Partial<CustomPageRecord>): Promise<CustomPageRecord> {
     const db = getDb();
-    const isSqlite = db.type === 'sqlite';
     const slug = (data.slug || '').toLowerCase().replace(/[^a-z0-9_-]/g, '');
 
     const existing = await this.getPageBySlug(slug);
@@ -56,9 +55,9 @@ export class PagesService {
         [
           data.title || existing.title,
           data.content || existing.content,
-          data.is_published !== undefined ? (data.is_published ? (isSqlite ? 1 : true) : (isSqlite ? 0 : false)) : (existing.is_published ? (isSqlite ? 1 : true) : (isSqlite ? 0 : false)),
-          data.require_auth !== undefined ? (data.require_auth ? (isSqlite ? 1 : true) : (isSqlite ? 0 : false)) : (existing.require_auth ? (isSqlite ? 1 : true) : (isSqlite ? 0 : false)),
-          data.show_in_navbar !== undefined ? (data.show_in_navbar ? (isSqlite ? 1 : true) : (isSqlite ? 0 : false)) : (existing.show_in_navbar ? (isSqlite ? 1 : true) : (isSqlite ? 0 : false)),
+          data.is_published !== undefined ? Boolean(data.is_published) : Boolean(existing.is_published),
+          data.require_auth !== undefined ? Boolean(data.require_auth) : Boolean(existing.require_auth),
+          data.show_in_navbar !== undefined ? Boolean(data.show_in_navbar) : Boolean(existing.show_in_navbar),
           data.meta_description || existing.meta_description || '',
           slug,
         ]
@@ -71,9 +70,9 @@ export class PagesService {
           slug,
           data.title || 'Untitled Page',
           data.content || '# New Page\n\nContent here...',
-          data.is_published !== false ? (isSqlite ? 1 : true) : (isSqlite ? 0 : false),
-          data.require_auth ? (isSqlite ? 1 : true) : (isSqlite ? 0 : false),
-          data.show_in_navbar ? (isSqlite ? 1 : true) : (isSqlite ? 0 : false),
+          data.is_published !== false,
+          Boolean(data.require_auth),
+          Boolean(data.show_in_navbar),
           data.meta_description || '',
         ]
       );

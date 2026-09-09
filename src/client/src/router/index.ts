@@ -11,6 +11,7 @@ import PublicAboutView from '../views/PublicAboutView.vue';
 import PublicDocsView from '../views/PublicDocsView.vue';
 import CustomPageView from '../views/CustomPageView.vue';
 import SubmitView from '../views/SubmitView.vue';
+import AiView from '../views/AiView.vue';
 
 // Admin Views
 import DashboardView from '../views/admin/DashboardView.vue';
@@ -43,6 +44,7 @@ const router = createRouter({
     { path: '/docs', name: 'public-docs', component: PublicDocsView },
     { path: '/p/:slug', name: 'custom-page', component: CustomPageView },
     { path: '/submit', name: 'submit', component: SubmitView },
+    { path: '/ai', name: 'ai', component: AiView },
 
     // Admin Suite
     { path: '/admin', redirect: '/admin/dashboard' },

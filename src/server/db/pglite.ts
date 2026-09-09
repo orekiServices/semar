@@ -1,16 +1,12 @@
-import pg from 'pg';
+import { PGlite } from '@electric-sql/pglite';
 import type { DatabaseAdapter, ConnectionTestResult, ExecuteResult, TableInfo } from './adapter.js';
 
-export interface PostgresConfig {
-  connectionString?: string;
-  host?: string;
-  port?: number;
-  user?: string;
-  password?: string;
-  database?: string;
-  ssl?: boolean | object;
-}
-
+/**
+ * v2.2 — PGlite adapter: real PostgreSQL (WASM, in-process) for tests and
+ * zero-config local development. Production uses managed Postgres.
+ *
+ * Select with USE_PGLITE=1 (tests set this automatically via npm test).
+ */
 // Tables whose primary key is NOT an `id` column — appending `RETURNING id`
 // to INSERTs against them would fail with 42703 (undefined column).
 const NO_ID_TABLES = new Set(['nodes', 'admin_users', 'system_config', 'youtube_cache']);
@@ -22,25 +18,18 @@ function wantsReturningId(sql: string): boolean {
   return !NO_ID_TABLES.has(m[1].toLowerCase());
 }
 
-export class PostgresAdapter implements DatabaseAdapter {
-  public type: 'postgres' = 'postgres';
-  private pool: pg.Pool;
+export class PgliteAdapter implements DatabaseAdapter {
+  public type: 'pglite' = 'pglite';
+  private db: PGlite;
+  private ready: Promise<void>;
 
-  constructor(config: PostgresConfig | string) {
-    if (typeof config === 'string') {
-      this.pool = new pg.Pool({ connectionString: config });
-    } else if (config.connectionString) {
-      this.pool = new pg.Pool({ connectionString: config.connectionString, ssl: config.ssl });
-    } else {
-      this.pool = new pg.Pool({
-        host: config.host || 'localhost',
-        port: config.port || 5432,
-        user: config.user || 'postgres',
-        password: config.password || '',
-        database: config.database || 'semar',
-        ssl: config.ssl,
-      });
-    }
+  constructor(dataDir?: string) {
+    this.db = dataDir ? new PGlite(dataDir) : new PGlite();
+    this.ready = this.db.waitReady.then(() => undefined);
+  }
+
+  private async ensureReady(): Promise<void> {
+    await this.ready;
   }
 
   private convertPlaceholders(sql: string): string {
@@ -48,15 +37,21 @@ export class PostgresAdapter implements DatabaseAdapter {
     return sql.replace(/\?/g, () => `$${index++}`);
   }
 
+  /** PGlite query() handles single statements; route multi-statement DDL to exec(). */
+  private isMultiStatement(sql: string, params: any[]): boolean {
+    if (params.length > 0) return false;
+    const stripped = sql.replace(/--.*$/gm, '').trim().replace(/;+$/g, '').trim();
+    return stripped.includes(';');
+  }
+
   async query<T = any>(sql: string, params: any[] = []): Promise<T[]> {
-    const convertedSql = this.convertPlaceholders(sql);
-    const client = await this.pool.connect();
-    try {
-      const res = await client.query(convertedSql, params);
-      return res.rows as T[];
-    } finally {
-      client.release();
+    await this.ensureReady();
+    if (this.isMultiStatement(sql, params)) {
+      await this.db.exec(sql);
+      return [];
     }
+    const res = await this.db.query<T>(this.convertPlaceholders(sql), params);
+    return res.rows as T[];
   }
 
   async queryOne<T = any>(sql: string, params: any[] = []): Promise<T | null> {
@@ -65,66 +60,31 @@ export class PostgresAdapter implements DatabaseAdapter {
   }
 
   async execute(sql: string, params: any[] = []): Promise<ExecuteResult> {
+    await this.ensureReady();
     let convertedSql = this.convertPlaceholders(sql);
     if (wantsReturningId(sql)) {
       convertedSql += ' RETURNING id';
     }
-
-    const client = await this.pool.connect();
-    try {
-      const res = await client.query(convertedSql, params);
-      const insertId = res.rows && res.rows[0] && res.rows[0].id ? res.rows[0].id : undefined;
-      return {
-        rowsAffected: res.rowCount || 0,
-        insertId,
-      };
-    } finally {
-      client.release();
-    }
+    const res = await this.db.query(convertedSql, params);
+    const insertId = (res.rows?.[0] as any)?.id;
+    return {
+      rowsAffected: res.affectedRows ?? 0,
+      insertId,
+    };
   }
 
   async transaction<T>(fn: (adapter: DatabaseAdapter) => Promise<T>): Promise<T> {
-    const client = await this.pool.connect();
+    await this.ensureReady();
+    await this.db.exec('BEGIN');
     try {
-      await client.query('BEGIN');
-      const txAdapter: DatabaseAdapter = {
-        type: 'postgres',
-        query: async <R = any>(sql: string, params: any[] = []) => {
-          const res = await client.query(this.convertPlaceholders(sql), params);
-          return res.rows as R[];
-        },
-        queryOne: async <R = any>(sql: string, params: any[] = []) => {
-          const res = await client.query(this.convertPlaceholders(sql), params);
-          return res.rows.length > 0 ? (res.rows[0] as R) : null;
-        },
-        execute: async (sql: string, params: any[] = []) => {
-          let cSql = this.convertPlaceholders(sql);
-          if (wantsReturningId(sql)) {
-            cSql += ' RETURNING id';
-          }
-          const res = await client.query(cSql, params);
-          return {
-            rowsAffected: res.rowCount || 0,
-            insertId: res.rows?.[0]?.id,
-          };
-        },
-        transaction: () => Promise.reject(new Error('Nested transactions not supported')),
-        testConnection: () => this.testConnection(),
-        getTables: () => this.getTables(),
-        createNodeTable: (nodeId: string) => this.createNodeTable(nodeId),
-        dropNodeTable: (nodeId: string) => this.dropNodeTable(nodeId),
-        getNodeTableStats: (nodeId: string) => this.getNodeTableStats(nodeId),
-        close: async () => {},
-      };
-
-      const result = await fn(txAdapter);
-      await client.query('COMMIT');
+      const result = await fn(this);
+      await this.db.exec('COMMIT');
       return result;
     } catch (err) {
-      await client.query('ROLLBACK');
+      try {
+        await this.db.exec('ROLLBACK');
+      } catch {}
       throw err;
-    } finally {
-      client.release();
     }
   }
 
@@ -136,15 +96,15 @@ export class PostgresAdapter implements DatabaseAdapter {
       );
       return {
         success: true,
-        type: 'postgres',
+        type: 'pglite',
         latencyMs: Date.now() - start,
-        version: res[0]?.version?.split(' ')?.[1] || 'PostgreSQL',
-        database: res[0]?.current_database || 'unknown',
+        version: 'PGlite ' + (res[0]?.version?.split(' ')?.[1] || ''),
+        database: res[0]?.current_database || 'memory',
       };
     } catch (err: any) {
       return {
         success: false,
-        type: 'postgres',
+        type: 'pglite',
         latencyMs: Date.now() - start,
         error: err.message,
       };
@@ -152,17 +112,13 @@ export class PostgresAdapter implements DatabaseAdapter {
   }
 
   async getTables(): Promise<TableInfo[]> {
-    const sql = `
-      SELECT 
-        table_name as name,
-        table_type as type
-      FROM information_schema.tables 
-      WHERE table_schema = 'public'
-      ORDER BY table_name ASC;
-    `;
-    const rows = await this.query<{ name: string; type: string }>(sql);
+    const rows = await this.query<{ name: string; type: string }>(
+      `SELECT table_name as name, table_type as type
+       FROM information_schema.tables
+       WHERE table_schema = 'public'
+       ORDER BY table_name ASC`
+    );
     const tables: TableInfo[] = [];
-
     for (const row of rows) {
       const countRes = await this.query<{ count: string }>(`SELECT COUNT(*) as count FROM "${row.name}"`);
       tables.push({
@@ -171,15 +127,13 @@ export class PostgresAdapter implements DatabaseAdapter {
         rowCount: parseInt(countRes[0]?.count || '0', 10),
       });
     }
-
     return tables;
   }
 
   async createNodeTable(nodeId: string): Promise<void> {
     const sanitizedNodeId = nodeId.toLowerCase().replace(/[^a-z0-9_]/g, '');
     const tableName = `lyrics_${sanitizedNodeId}`;
-
-    const sql = `
+    await this.query(`
       CREATE TABLE IF NOT EXISTS "${tableName}" (
         id SERIAL PRIMARY KEY,
         title VARCHAR(255) NOT NULL,
@@ -201,9 +155,7 @@ export class PostgresAdapter implements DatabaseAdapter {
       CREATE INDEX IF NOT EXISTS "idx_${tableName}_artist" ON "${tableName}" ("artist");
       CREATE INDEX IF NOT EXISTS "idx_${tableName}_yt" ON "${tableName}" ("youtube_video_id");
       CREATE INDEX IF NOT EXISTS "idx_${tableName}_meta_gin" ON "${tableName}" USING gin ("metadata");
-    `;
-
-    await this.query(sql);
+    `);
   }
 
   async dropNodeTable(nodeId: string): Promise<void> {
@@ -217,7 +169,7 @@ export class PostgresAdapter implements DatabaseAdapter {
     const tableName = `lyrics_${sanitizedNodeId}`;
     try {
       const countRes = await this.query<{ count: string; size: string }>(`
-        SELECT 
+        SELECT
           COUNT(*) as count,
           pg_total_relation_size('"${tableName}"') as size
         FROM "${tableName}"
@@ -232,6 +184,6 @@ export class PostgresAdapter implements DatabaseAdapter {
   }
 
   async close(): Promise<void> {
-    await this.pool.end();
+    await this.db.close();
   }
 }

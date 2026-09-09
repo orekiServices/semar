@@ -14,6 +14,33 @@ describe('Semar v2.1 Feature Test Suite', () => {
   before(async () => {
     await initDatabase(true);
     metricsService.reset();
+
+    // v2.2: tests provision their own nodes (no seeded defaults)
+    for (const nodeId of ['akai', 'pine']) {
+      const existing = await nodeService.getNode(nodeId);
+      if (!existing) await nodeService.createNode({ node_id: nodeId, name: `${nodeId} test` } as any);
+    }
+    const trendingSeed = await lyricsService.searchNode('pine', 'V21 Trending Seed');
+    if (trendingSeed.length === 0) {
+      await lyricsService.saveLyrics('pine', {
+        title: 'V21 Trending Seed Alpha',
+        artist: 'V21 Band',
+        plain_lyrics: 'trending alpha lyrics here',
+        views_count: 9000,
+      });
+      await lyricsService.saveLyrics('pine', {
+        title: 'V21 Trending Seed Beta',
+        artist: 'V21 Band',
+        plain_lyrics: 'trending beta lyrics here',
+        views_count: 3000,
+      });
+      await lyricsService.saveLyrics('akai', {
+        title: 'V21 Akai Scoped Track',
+        artist: 'V21 Scoped',
+        plain_lyrics: 'scoped akai lyrics here',
+        views_count: 100,
+      });
+    }
   });
 
   test('Metrics engine - records hits and builds a real hourly timeline', async () => {
@@ -41,13 +68,13 @@ describe('Semar v2.1 Feature Test Suite', () => {
   });
 
   test('Metrics engine - Prometheus exposition renders counters', async () => {
-    const text = metricsService.renderPrometheus({ cacheEntries: 7, cacheHitRate: 88.5, semapiCalls: 42, dbType: 'sqlite' });
+    const text = metricsService.renderPrometheus({ cacheEntries: 7, cacheHitRate: 88.5, semapiCalls: 42, dbType: 'pglite' });
     assert.ok(text.includes('semar_http_requests_total 4'));
     assert.ok(text.includes('semar_http_errors_total 1'));
     assert.ok(text.includes('semar_http_status_total{status="200"} 3'));
     assert.ok(text.includes('semar_cache_memory_entries 7'));
     assert.ok(text.includes('semar_semapi_calls_total 42'));
-    assert.ok(text.includes('semar_db_info{engine="sqlite"} 1'));
+    assert.ok(text.includes('semar_db_info{engine="pglite"} 1'));
   });
 
   test('Metrics engine - flush persists hourly aggregates to system_metrics', async () => {
@@ -58,7 +85,7 @@ describe('Semar v2.1 Feature Test Suite', () => {
     const row = await db.queryOne<{ count: number }>(
       "SELECT COUNT(*) as count FROM system_metrics WHERE category = 'http' AND metric_name = 'requests_per_hour'"
     );
-    assert.ok((row?.count || 0) >= 1, 'hourly aggregate rows should exist');
+    assert.ok(Number(row?.count) >= 1, 'hourly aggregate rows should exist');
   });
 
   test('Submissions - full moderation flow: submit -> approve -> searchable', async () => {
@@ -114,6 +141,10 @@ describe('Semar v2.1 Feature Test Suite', () => {
       () => submissionService.createSubmission({ node_id: 'nope_missing', title: 't', artist: 'a', plain_lyrics: 'x' } as any),
       /does not exist/
     );
+    await assert.rejects(
+      () => submissionService.createSubmission({ node_id: 'lrclib', title: 't', artist: 'a', plain_lyrics: 'x' } as any),
+      /special external node/
+    );
   });
 
   test('Submissions - reject flow marks submission with reviewer note', async () => {
@@ -148,7 +179,7 @@ describe('Semar v2.1 Feature Test Suite', () => {
 
   test('Scoped search - nodeIds restriction filters partitions', async () => {
     const akaiOnly = await lyricsService.searchAll('', 50, { nsfw: true, nodeIds: ['akai'] });
-    assert.ok(akaiOnly.length > 0, 'akai partition should have seeded tracks');
+    assert.ok(akaiOnly.length > 0, 'akai partition should have test tracks');
     assert.ok(akaiOnly.every((t) => t.node_id === 'akai'), 'all results must come from akai');
   });
 
@@ -168,7 +199,7 @@ describe('Semar v2.1 Feature Test Suite', () => {
 
     const bundle: any = await semApiService.exportRoute(srcId);
     assert.ok(bundle, 'export bundle should exist');
-    assert.strictEqual(bundle.semarVersion, '2.1.0');
+    assert.strictEqual(bundle.semarVersion, '2.2.0');
     assert.strictEqual(bundle.route.path, '/v1/v21/export-source');
     assert.ok(!('total_calls' in bundle.route), 'stats must be stripped from export');
 

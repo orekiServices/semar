@@ -9,7 +9,7 @@ const HOST = '0.0.0.0';
 
 async function bootstrap() {
   console.log('--------------------------------------------------');
-  console.log('       ⁠♡ SEMAR LYRICS DATABASE ENGINE v2.1.0      ');
+  console.log('       ⁠♡ SEMAR LYRICS DATABASE ENGINE v2.2.0      ');
   console.log('--------------------------------------------------');
 
   try {

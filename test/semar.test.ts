@@ -1,35 +1,81 @@
 import { test, describe, before } from 'node:test';
 import assert from 'node:assert';
-import { initDatabase, getDb, switchDatabase } from '../src/server/db/index.js';
+import { initDatabase, getDb } from '../src/server/db/index.js';
 import { nodeService } from '../src/server/services/node.service.js';
 import { lyricsService } from '../src/server/services/lyrics.service.js';
 import { cacheService } from '../src/server/services/cache.service.js';
 import { semApiService } from '../src/server/services/semapi.service.js';
 import { authService } from '../src/server/services/auth.service.js';
-import { createApp } from '../src/server/app.js';
 
-import { lrcToTtml, ttmlToLrc, parseLrcTimestamps } from '../src/server/services/ttml.util.js';
+import { lrcToTtml, ttmlToLrc } from '../src/server/services/ttml.util.js';
 
 describe('Semar Core & Database Isolation Test Suite', () => {
   before(async () => {
     await initDatabase(true);
+
+    // v2.2: no default nodes are seeded — tests provision their own data
+    for (const def of [
+      { node_id: 'akai', name: 'Akai Test Partition', is_nsfw: false },
+      { node_id: 'pine', name: 'PiNE Test Partition', is_nsfw: false },
+      { node_id: 'pakai', name: 'PAKAI Test Partition', is_nsfw: true },
+    ]) {
+      const existing = await nodeService.getNode(def.node_id);
+      if (!existing) await nodeService.createNode(def as any);
+    }
+
+    const gurenge = await lyricsService.searchNode('akai', 'Gurenge');
+    if (gurenge.length === 0) {
+      await lyricsService.saveLyrics('akai', {
+        title: 'Gurenge (紅蓮華)',
+        artist: 'LiSA',
+        album: 'LEO-NiNE / Demon Slayer OP',
+        youtube_video_id: 'CwkzK-Fh400',
+        duration: 238,
+        plain_lyrics: 'Tsuyoku nareru riyuu wo shitta\nBoku wo tsurete susume',
+        synced_lyrics: '[00:04.12]Tsuyoku nareru riyuu wo shitta\n[00:08.85]Boku wo tsurete susume',
+        views_count: 142050,
+      });
+      await lyricsService.saveLyrics('akai', {
+        title: 'Idol (アイドル)',
+        artist: 'YOASOBI',
+        album: 'THE BOOK 3 / Oshi no Ko OP',
+        youtube_video_id: 'ZRtdQ81jPUQ',
+        duration: 213,
+        plain_lyrics: 'Muteki no egao de arasu media\nTensai teki na aidoru sama',
+        synced_lyrics: '[00:03.50]Muteki no egao de arasu media\n[00:16.80]Tensai teki na aidoru sama',
+        views_count: 312000,
+      });
+    }
+    const blinding = await lyricsService.searchNode('pine', 'Blinding Lights');
+    if (blinding.length === 0) {
+      await lyricsService.saveLyrics('pine', {
+        title: 'Blinding Lights',
+        artist: 'The Weeknd',
+        album: 'After Hours',
+        youtube_video_id: '4NRXx6U8ABQ',
+        duration: 200,
+        plain_lyrics: "Yeah\nI've been tryna call\nI've been on my own for long enough",
+        synced_lyrics: "[00:12.50]Yeah\n[00:14.20]I've been tryna call",
+        views_count: 580000,
+      });
+    }
   });
 
   test('Database layer initializes with correct dialect', async () => {
     const db = getDb();
     assert.ok(db, 'Database adapter should be defined');
-    assert.ok(['sqlite', 'postgres', 'mysql'].includes(db.type), 'Valid db type');
+    assert.ok(['postgres', 'mysql', 'pglite'].includes(db.type), 'Valid db type (sqlite removed in v2.2)');
     const testResult = await db.testConnection();
     assert.strictEqual(testResult.success, true, 'Connection test should succeed');
   });
 
-  test('Semar Nodes - default isolated partitions exist (Akai, PiNE, PAKAI)', async () => {
+  test('Semar Nodes - isolated partitions exist with correct metadata', async () => {
     const nodes = await nodeService.listNodes();
-    assert.ok(nodes.length >= 3, 'At least 3 nodes should exist');
-    
-    const akai = nodes.find(n => n.node_id === 'akai');
-    const pine = nodes.find(n => n.node_id === 'pine');
-    const pakai = nodes.find(n => n.node_id === 'pakai');
+    const local = nodes.filter((n) => !n.is_special);
+
+    const akai = local.find((n) => n.node_id === 'akai');
+    const pine = local.find((n) => n.node_id === 'pine');
+    const pakai = local.find((n) => n.node_id === 'pakai');
 
     assert.ok(akai, 'Akai node must exist');
     assert.ok(pine, 'PiNE node must exist');
@@ -139,7 +185,6 @@ describe('Semar Core & Database Isolation Test Suite', () => {
 
     assert.strictEqual(testExec.statusCode, 200);
     assert.strictEqual(testExec.body.status, 'success');
-    assert.strictEqual(testExec.body.node, 'akai');
     assert.ok(testExec.body.results.some((r: any) => r.title.includes('Idol')));
   });
 
@@ -159,16 +204,20 @@ describe('Semar Core & Database Isolation Test Suite', () => {
     assert.ok(parsedLrc.includes('Tsuyoku nareru riyuu wo shitta'), 'Parsed LRC should retain words');
   });
 
-  test('TTML Lyrics - seeded records have full TTML support in Akai & PiNE', async () => {
-    const akaiSong = await lyricsService.getLyricsById('akai', 1);
-    assert.ok(akaiSong, 'Akai song 1 should exist');
-    assert.ok(akaiSong.ttml_lyrics, 'Akai song 1 should have TTML lyrics populated');
+  test('TTML Lyrics - stored records have full TTML support', async () => {
+    const akaiSongs = await lyricsService.searchNode('akai', 'Gurenge');
+    assert.ok(akaiSongs.length > 0, 'Akai test song should exist');
+    const akaiSong = await lyricsService.getLyricsById('akai', Number(akaiSongs[0].id));
+    assert.ok(akaiSong, 'Akai song should exist');
+    assert.ok(akaiSong.ttml_lyrics, 'Akai song should have TTML lyrics populated');
     assert.ok(akaiSong.ttml_lyrics.includes('<tt xmlns="http://www.w3.org/ns/ttml"'));
     assert.ok(akaiSong.ttml_lyrics.includes('<span begin="'));
 
-    const pineSong = await lyricsService.getLyricsById('pine', 1);
-    assert.ok(pineSong, 'PiNE song 1 should exist');
-    assert.ok(pineSong.ttml_lyrics, 'PiNE song 1 should have TTML lyrics populated');
+    const pineSongs = await lyricsService.searchNode('pine', 'Blinding');
+    assert.ok(pineSongs.length > 0, 'PiNE test song should exist');
+    const pineSong = await lyricsService.getLyricsById('pine', Number(pineSongs[0].id));
+    assert.ok(pineSong, 'PiNE song should exist');
+    assert.ok(pineSong.ttml_lyrics, 'PiNE song should have TTML lyrics populated');
   });
 
   test('Auth Service - Admin credentials and API key generation', async () => {

@@ -3,6 +3,7 @@ import { nodeService } from './node.service.js';
 import { cacheService } from './cache.service.js';
 import { semApiService } from './semapi.service.js';
 import { metricsService } from './metrics.service.js';
+import { minaiService } from './minai.service.js';
 
 export class StatsService {
   async getDashboardOverview() {
@@ -31,9 +32,10 @@ export class StatsService {
     const semapiStats = await semApiService.getSemApiStats();
     const tables = await db.getTables();
 
-    // Top tracks across nodes
+    // Top tracks across local nodes (specials have no tables)
     const topTracks: any[] = [];
     for (const node of nodes) {
+      if (node.is_special) continue;
       try {
         const rows = await db.query<any>(
           `SELECT id, title, artist, album, youtube_video_id, views_count 
@@ -57,7 +59,14 @@ export class StatsService {
       const sub = await db.queryOne<{ count: number }>(
         "SELECT COUNT(*) as count FROM lyrics_submissions WHERE status = 'pending'"
       );
-      pendingSubmissions = sub?.count || 0;
+      pendingSubmissions = Number(sub?.count) || 0;
+    } catch {}
+
+    // v2.2 — MIN-AI training status (memory-cached, cheap)
+    let minai: { trained: boolean; tracks: number; states: number } = { trained: false, tracks: 0, states: 0 };
+    try {
+      const s = await minaiService.getStatus();
+      minai = { trained: s.trained, tracks: s.stats?.tracks || 0, states: s.stats?.states || 0 };
     } catch {}
 
     return {
@@ -68,12 +77,14 @@ export class StatsService {
         activeSemApiRoutes: semapiStats.activeRoutes,
         totalSemApiRoutes: semapiStats.totalRoutes,
         totalSemApiCalls: semapiStats.totalCalls,
-        youtubeCachedCount: ytCountRes?.count || 0,
+        youtubeCachedCount: Number(ytCountRes?.count) || 0,
         memoryCacheEntries: cacheStats.memoryEntries,
         cacheHitRate: cacheStats.hitRate,
         databaseType: db.type,
         totalTablesCount: tables.length,
         pendingSubmissions,
+        specialNodes: nodes.filter((n) => n.is_special).length,
+        minai,
       },
       nodeDistribution,
       topTracks: topTracks.slice(0, 8),

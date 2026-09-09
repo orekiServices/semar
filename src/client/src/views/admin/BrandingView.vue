@@ -81,7 +81,7 @@ const form = ref<any>({
   siteName: '⁠♡ Semar',
   tagline: 'Self-Hosted Synchronized Lyrics Database & SemAPI Engine',
   heroTitle: 'Find & Synchronize Every Lyric',
-  heroSubtitle: 'Explore over 780,000 synchronized tracks across isolated high-speed nodes with millisecond LRC accuracy.',
+  heroSubtitle: 'Search your self-hosted lyric nodes, community libraries, and external providers — with millisecond LRC accuracy.',
   footerText: 'Powered by Semar Engine ⁠♡ Written in TypeScript with Express & Vue 3',
 });
 
